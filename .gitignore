@@ -1,0 +1,72 @@
+# =========================
+# Build output (DO NOT TRACK)
+# =========================
+Debug/
+Release/
+
+# =========================
+# Eclipse / MCUXpresso junk
+# =========================
+.settings/
+.metadata/
+
+# Optional: workspace launch configs (can regenerate)
+*.launch
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+
+# =========================
+# MATLAB temporary files
+# =========================
+*.asv
+*.m~
+
+# =========================
+# Logs / temp
+# =========================
+*.log
+*.tmp
+
+# =========================
+# OS junk
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Recordings (VERY IMPORTANT)
+# =========================
+
+# Raw experiment data can get huge
+Recordings/
+Python Files/Recordings/
+**/recordings/
+**/Recordings/
+**/session_raw_*.txt
+MATLAB\ Files/20*/
+
+# Optional: if MATLAB saves .mat outputs
+MATLAB\ Files/*.mat
+MATLAB\ Files/outputs/
+thesis_pipeline/outputs/
+analysis/
+
+# =========================
+# Optional: ignore generated CSV logs
+# =========================
+*.csv
+!MATLAB\ Files/config/*.csv
+**/*recording_manifest*.csv
+
+# =========================
+# Generated source dumps
+# =========================
+source_code_dump.txt
+rescue_dirty_diff_*.patch
+*.lnk
+

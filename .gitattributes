@@ -1,0 +1,19 @@
+# Normalise text files for cleaner diffs across Windows/MATLAB/GitHub.
+* text=auto
+
+*.c text eol=lf
+*.h text eol=lf
+*.m text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.csv text eol=lf
+
+# NXP SDK/vendor support dominates file count. Mark it as vendored so GitHub
+# language statistics focus on the thesis code.
+CMSIS/** linguist-vendored
+component/** linguist-vendored
+device/** linguist-vendored
+drivers/** linguist-vendored
+startup/** linguist-vendored
+utilities/** linguist-vendored
+xip/** linguist-vendored

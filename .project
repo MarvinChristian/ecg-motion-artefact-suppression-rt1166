@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<projectDescription>
+	<name>Motion_Artefact_Suppression_ECG_SystemP1_09_04_2026</name>
+	<comment></comment>
+	<projects>
+	</projects>
+	<buildSpec>
+		<buildCommand>
+			<name>org.eclipse.cdt.managedbuilder.core.genmakebuilder</name>
+			<triggers>clean,full,incremental,</triggers>
+			<arguments>
+			</arguments>
+		</buildCommand>
+		<buildCommand>
+			<name>org.eclipse.cdt.managedbuilder.core.ScannerConfigBuilder</name>
+			<triggers>full,incremental,</triggers>
+			<arguments>
+			</arguments>
+		</buildCommand>
+	</buildSpec>
+	<natures>
+		<nature>org.eclipse.cdt.core.cnature</nature>
+		<nature>com.nxp.mcuxpresso.core.datamodels.sdkNature</nature>
+		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
+		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
+	</natures>
+	<linkedResources>
+		<link>
+			<name>doc/example_board_readme.md</name>
+			<type>1</type>
+			<locationURI>SDK_2_x_MIMXRT1160_EVK/boards/evkmimxrt1160/demo_apps/lpadc_high_sample_rate/sample_signal/cm7/example_board_readme.md</locationURI>
+		</link>
+		<link>
+			<name>doc/examples_shared_readme.md</name>
+			<type>1</type>
+			<locationURI>SDK_2_x_MIMXRT1160_EVK/boards/evkmimxrt1160/demo_apps/lpadc_high_sample_rate/sample_signal/cm7/examples_shared_readme.md</locationURI>
+		</link>
+		<link>
+			<name>doc/readme.md</name>
+			<type>1</type>
+			<locationURI>SDK_2_x_MIMXRT1160_EVK/boards/evkmimxrt1160/demo_apps/lpadc_high_sample_rate/sample_signal/cm7/readme.md</locationURI>
+		</link>
+	</linkedResources>
+</projectDescription>
