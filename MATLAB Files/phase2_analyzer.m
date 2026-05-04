@@ -1,4 +1,4 @@
-%%% phase2_analyzer.m
+% %%% phase2_analyzer.m
 %
 % AUTHOR:   Marvin Christian
 % TITLE:    ECG Filter + MAS Analysis GUI (thesis Phase 2)
@@ -6,8 +6,8 @@
 % RENAMED:  02/05/2026 — was phase3_analyzer.m; promoted to Phase 2 main GUI
 %
 % CURRENT GUI-FACING SET:
-%   BPF   : B1-B7 (build_bpf_struct)
-%   Notch : N1, N3, N5, N6, N8, N9 (N2/N4/N7 dropped — not in thesis set)
+%   BPF   : B1-B8 (build_bpf_struct)
+%   Notch : N1-N6
 %   MAS   : M1 LMS, M2 NLMS, M3 RLS, M4 RT coherent-band NLMS,
 %           M5 RT differential coherent-band, M6 validated adaptive event-band.
 %   These dispatch to internal implementation IDs [32, 3, 6, 24, 26, 31].
@@ -78,13 +78,13 @@ function phase2_analyzer()
 BPF = build_bpf_struct();
 NOTCH_NAMES = {
     'N1: IIR ×6  r=0.990',
-    'N3: NLMS  μ=0.005',
-    'N5: Hybrid IIR+NLMS',
-    'N6: RLS  λ=0.990',
-    'N8: Hybrid IIR+RLS',
-    'N9: Auto-detect multi-freq'
+    'N2: NLMS  μ=0.005',
+    'N3: Hybrid IIR+NLMS',
+    'N4: RLS  λ=0.990',
+    'N5: Hybrid IIR+RLS',
+    'N6: Auto-detect multi-freq'
 };
-NOTCH_TYPES = {'N1','N3','N5','N6','N8','N9'};
+NOTCH_TYPES = {'N1','N2','N3','N4','N5','N6'};
 
 MAS_NAMES = {
     'None (skip MAS)',
@@ -113,7 +113,7 @@ MAS_NAMES = {
     'M23: RT best feature+lag NLMS',
     'M24: RT coherent-band NLMS',
     'M25: RT staged LA/RA NLMS',
-    'M26: RT diff01 coherent-band',
+    'M26: RT diff12 coherent-band',
     'M27: Aggressive all-IMU NLMS',
     'M28: Aggressive all-IMU bands',
     'M29: AD8233 OUT-matched all-IMU',
@@ -135,7 +135,7 @@ MAS_LIST_NAMES = {
 LSB_PER_G   = 16384;   % +/-2g, FS_SEL=0
 LSB_PER_DPS = 131;     % +/-250 deg/s, FS_SEL=0
 DC_ALPHA     = 0.995;  % IIR DC blocker matching firmware
-ADS_SCALE_MV = 1400 / 8388607;
+ADS_SCALE_MV = (2 * 2400 / 3.5) / hex2dec('C35000');
 
 %% ═══════════════════════════════════════════════════════════════════════
 %% SHARED STATE
@@ -151,8 +151,6 @@ state.file_path      = '';
 state.loaded         = false;
 state.mode           = 'ECG_ONLY';   % or 'ECG_IMU'
 state.inject_n_tones = 4;
-state.n10.ref_raw    = [];
-state.n10.ref_label  = 'N10 fallback: local spectral cap';
 
 % IMU state (populated on ECG_IMU load)
 state.imu.mag0_ac  = [];  state.imu.mag1_ac  = [];  state.imu.mag2_ac  = [];
@@ -193,7 +191,7 @@ sidebar = uipanel(fig, ...
     'BackgroundColor',[0.18 0.18 0.21], ...
     'BorderType','none');
 
-uilabel(sidebar, 'Text','ECG Filter + MAS Analyser  (B1-B7 | N1,N3,N5,N6,N8,N9 | M1-M6)',...
+uilabel(sidebar, 'Text','ECG Filter + MAS Analyser  (B1-B8 | N1-N6 | M1-M6)',...
     'Position',[10 924 320 22], ...
     'FontSize',13, 'FontWeight','bold', 'FontColor',[0.9 0.9 0.9], ...
     'HorizontalAlignment','center');
@@ -255,13 +253,14 @@ bpf_grp = uibuttongroup(sidebar, ...
 
 bpf_btn = gobjects(numel(BPF)+1, 1);
 bpf_btn(1) = uiradiobutton(bpf_grp,'Text','None (skip BPF)', ...
-    'Position',[4 131 312 20],'Value',true, ...
+    'Position',[4 131 312 20],'Value',false, ...
     'FontSize',8.5,'FontColor',[0.82 0.82 0.82]);
 for b = 1:numel(BPF)
     bpf_btn(b+1) = uiradiobutton(bpf_grp,'Text',BPF(b).name, ...
-        'Position',[4 131-b*18 312 20],'Value',false, ...
+        'Position',[4 131-b*15 312 20],'Value',false, ...
         'FontSize',8.5,'FontColor',[0.82 0.82 0.82]);
 end
+bpf_btn(9).Value = true;   % B8 default
 
 divider_line(sidebar, 602, 320);
 
@@ -277,13 +276,14 @@ notch_grp = uibuttongroup(sidebar, ...
 
 notch_btn = gobjects(numel(NOTCH_NAMES)+1, 1);
 notch_btn(1) = uiradiobutton(notch_grp,'Text','None (skip Notch)', ...
-    'Position',[4 186 312 20],'Value',true, ...
+    'Position',[4 186 312 20],'Value',false, ...
     'FontSize',8.5,'FontColor',[0.82 0.82 0.82]);
 for n = 1:numel(NOTCH_NAMES)
     notch_btn(n+1) = uiradiobutton(notch_grp,'Text',NOTCH_NAMES{n}, ...
         'Position',[4 186-n*20 312 20],'Value',false, ...
         'FontSize',8.5,'FontColor',[0.82 0.82 0.82]);
 end
+notch_btn(7).Value = true;  % N6 default
 
 divider_line(sidebar, 366, 320);
 
@@ -691,8 +691,6 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         state.file_path = fpath;
         state.loaded    = true;
         state.last.evaluated = false;
-        state.n10.ref_raw = [];
-        state.n10.ref_label = 'N10 hidden from current analyser filter set';
 
         if n_cols == 17 || n_cols == 20
             state.mode = 'ECG_IMU';
@@ -821,111 +819,17 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         for ii = first_numeric:numel(lines_local)
             parts = strsplit(strtrim(lines_local{ii}), ',');
             if numel(parts) ~= n_cols_local
-                error('Inconsistent column count on line %d: expected %d, got %d.', ...
-                      ii, n_cols_local, numel(parts));
+                continue;
             end
             row_vals = str2double(parts);
             if any(isnan(row_vals))
-                error('Non-numeric value encountered after data start on line %d.', ii);
+                continue;
             end
             n_rows = n_rows + 1;
             data_out(n_rows,:) = row_vals;
         end
 
         data_out = data_out(1:n_rows, :);
-    end
-
-    function [ref_raw, ref_label] = load_n10_reference(current_path, Fs_target, current_ecg, cond)
-        % Prefer a resting recording from the same session folder. If none is
-        % available, N10 falls back to its internal local spectral cap.
-        ref_raw = [];
-        ref_label = 'N10 fallback: local spectral cap';
-
-        if strcmp(cond, 'resting')
-            ref_raw = current_ecg(:);
-            ref_label = 'N10 reference: current resting recording';
-            return;
-        end
-
-        [folder, ~, ~] = fileparts(current_path);
-        if isempty(folder) || ~isfolder(folder)
-            return;
-        end
-
-        candidates = dir(fullfile(folder, '*resting*.txt'));
-        if isempty(candidates)
-            return;
-        end
-
-        ref_path = fullfile(candidates(1).folder, candidates(1).name);
-        try
-            [ref_ecg, ref_fs] = read_ecg_mV_for_n10(ref_path);
-            if isempty(ref_ecg)
-                return;
-            end
-            if isfinite(ref_fs) && ref_fs > 0 && abs(ref_fs - Fs_target) / Fs_target > 0.02
-                ref_ecg = resample_ecg_for_n10(ref_ecg, ref_fs, Fs_target);
-            end
-            ref_raw = ref_ecg(:);
-            ref_label = sprintf('N10 reference: %s', candidates(1).name);
-        catch
-            ref_raw = [];
-            ref_label = 'N10 fallback: resting reference unreadable';
-        end
-    end
-
-    function [ecg_mV, fs_data] = read_ecg_mV_for_n10(path_in)
-        raw_ref = read_numeric_csv_file(path_in);
-        if isempty(raw_ref)
-            ecg_mV = [];
-            fs_data = NaN;
-            return;
-        end
-
-        [~, n_cols_ref] = size(raw_ref);
-        if n_cols_ref ~= 2 && n_cols_ref ~= 4 && n_cols_ref ~= 17 && n_cols_ref ~= 20 && n_cols_ref ~= 22 && n_cols_ref ~= 23
-            ecg_mV = [];
-            fs_data = NaN;
-            return;
-        end
-
-        data_ref = double(raw_ref);
-        for col = 2:n_cols_ref
-            mask = data_ref(:,col) > 2147483647;
-            data_ref(mask,col) = data_ref(mask,col) - 4294967296;
-        end
-
-        % Accept trailing ADS/debug fields by ignoring cols 21:end for ECG replay.
-        if n_cols_ref == 22 || n_cols_ref == 23
-            data_ref = data_ref(:,1:20);
-            n_cols_ref = 20;
-        elseif n_cols_ref == 4
-            data_ref = data_ref(:,1:2);
-            n_cols_ref = 2;
-        end
-
-        t_us_ref = data_ref(:,1);
-        wrap_ref = find(diff(t_us_ref) < 0, 1);
-        if ~isempty(wrap_ref)
-            t_us_ref(wrap_ref+1:end) = t_us_ref(wrap_ref+1:end) + 4294967296;
-        end
-        t_us_ref = t_us_ref - t_us_ref(1);
-        t_s_ref = t_us_ref / 1e6;
-        dt_ref = diff(t_s_ref);
-        dt_ref = dt_ref(dt_ref > 0);
-        fs_data = 1 / median(dt_ref);
-        ecg_mV = data_ref(:,2) * (1800 / 4096);
-    end
-
-    function y_ref = resample_ecg_for_n10(x_ref, fs_src, fs_dst)
-        x_ref = x_ref(:);
-        if numel(x_ref) < 2
-            y_ref = x_ref;
-            return;
-        end
-        t_src = (0:numel(x_ref)-1)' / fs_src;
-        t_dst = (0:1/fs_dst:t_src(end))';
-        y_ref = interp1(t_src, x_ref, t_dst, 'linear', 'extrap');
     end
 
     function run_evaluation()
@@ -972,25 +876,12 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         end
 
         notch_type = NOTCH_TYPES{notch_idx};
-        if strcmp(notch_type, 'N10')
-            if nargin >= 6 && ~isempty(ref_override)
-                ref_sig = ref_override;
-            else
-                ref_sig = n10_reference_for_filter(bpf_idx, sos_bpf_data);
-            end
-            y = apply_notch(x, notch_type, Fs, ref_sig);
+        if strcmp(notch_type, 'N6') && nargin >= 6 && ~isempty(ref_override)
+            % ref_override is the pre-BPF signal; N6 uses it for detection
+            % so it can find 50 Hz that BPF has already attenuated in x.
+            y = apply_notch(x, notch_type, Fs, ref_override);
         else
             y = apply_notch(x, notch_type, Fs);
-        end
-    end
-
-    function ref_sig = n10_reference_for_filter(bpf_idx, sos_bpf_data)
-        ref_sig = [];
-        if ~isempty(state.n10.ref_raw)
-            ref_sig = state.n10.ref_raw(:);
-            if bpf_idx > 0 && ~isempty(sos_bpf_data)
-                ref_sig = apply_biquad(sos_bpf_data, ref_sig);
-            end
         end
     end
 
@@ -1056,7 +947,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                     after_bpf = sig_in;
                 end
                 if notch_idx > 0
-                    tA = tic; after_notch = apply_selected_notch(after_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data); t_notch = toc(tA);
+                    tA = tic; after_notch = apply_selected_notch(after_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data, sig_in); t_notch = toc(tA);
                 else
                     after_notch = after_bpf;
                 end
@@ -1084,7 +975,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                     after_bpf = mas_out;
                 end
                 if notch_idx > 0
-                    tA = tic; after_notch = apply_selected_notch(after_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data); t_notch = toc(tA);
+                    tA = tic; after_notch = apply_selected_notch(after_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data, sig_in); t_notch = toc(tA);
                 else
                     after_notch = after_bpf;
                 end
@@ -1108,7 +999,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                     tA = tic; [mas_out, ref_display, ref_disp_lbl] = apply_mas(mas_in, mas_idx, Fs); t_mas = toc(tA);
                 end
                 if notch_idx > 0
-                    tA = tic; after_notch = apply_selected_notch(mas_out, notch_idx, Fs, bpf_idx, sos_bpf_data); t_notch = toc(tA);
+                    tA = tic; after_notch = apply_selected_notch(mas_out, notch_idx, Fs, bpf_idx, sos_bpf_data, sig_in); t_notch = toc(tA);
                 else
                     after_notch = mas_out;
                 end
@@ -1143,7 +1034,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             baseline_bpf = sig_in;
         end
         if notch_idx > 0
-            filtered = apply_selected_notch(baseline_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data);
+            filtered = apply_selected_notch(baseline_bpf, notch_idx, Fs, bpf_idx, sos_bpf_data, sig_in);
         else
             filtered = baseline_bpf;
         end
@@ -1188,7 +1079,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         if strcmp(notch_type, 'N1')
             sos_n   = build_notch_at_fs(notch_idx, Fs);
             H_notch = sos_freq_response(sos_n, NFFT);
-        elseif notch_idx > 0 && ~strcmp(notch_type, 'N9')
+        elseif notch_idx > 0 && ~strcmp(notch_type, 'N6')
             H_notch = adaptive_freq_response(notch_type, Fs, NFFT);
         end
 
@@ -1200,9 +1091,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         [P_mas_in, ~   ] = safe_pwelch(mas_input,     Fs, NFFT);
         [P_mas_out,~   ] = safe_pwelch(mas_direct_out, Fs, NFFT);
 
-        % ── N9 empirical response ─────────────────────────────────────
+        % ── N6 empirical response ─────────────────────────────────────
         detected_freqs = [];
-        if strcmp(notch_type, 'N9')
+        if strcmp(notch_type, 'N6')
             max_pow2 = 2^floor(log2(max(N,1)));
             nfft_lo  = min(max_pow2, 2^nextpow2(round(Fs/0.005))); nfft_lo = max(nfft_lo,64);
             freqs_z1 = auto_detect_interference(sig_in,Fs,0.01,min(0.4,Fs/2-1),6,3,nfft_lo);
@@ -1218,9 +1109,6 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             notch_input_psd = Pbpf;
             H_notch_lin = sqrt((Pfilt+1e-30)./(notch_input_psd+1e-30));
             H_notch = H_notch_lin;
-        elseif strcmp(notch_type, 'N10')
-            notch_input_psd = Pbpf;
-            H_notch = sqrt((Pfilt+1e-30)./(notch_input_psd+1e-30));
         end
 
         H_combined    = H_bpf .* H_notch;
@@ -1301,21 +1189,27 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
 
         % ── TAB 2: FREQUENCY DOMAIN ───────────────────────────────────
         cla(ax_psd); hold(ax_psd,'on');
+        ax_psd.YScale = 'log';
         semilogy(ax_psd,f_pw,Praw, 'Color',[0.6 0.6 0.65],'LineWidth',0.8,'DisplayName','Raw');
         semilogy(ax_psd,f_pw,Pfilt,'Color',[0.3 0.75 0.95],'LineWidth',1.2,'DisplayName','BPF+Notch');
         if mas_idx > 0
             semilogy(ax_psd,f_pw,Pmas,'Color',[0.35 0.9 0.5],'LineWidth',1.2,'DisplayName',display_mas_name(mas_idx));
         end
-        xline(ax_psd,0.5,'Color',[0.8 0.7 0.3],'LineWidth',0.8,'Label','0.5 Hz');
-        xline(ax_psd,40, 'Color',[0.8 0.7 0.3],'LineWidth',0.8,'Label','40 Hz');
-        xline(ax_psd,50, 'Color',[0.8 0.4 0.4],'LineWidth',0.8,'LineStyle','--','Label','50 Hz');
+        xline(ax_psd,0.5,'Color',[0.8 0.7 0.3],'LineWidth',0.8,'Label','0.5 Hz','HandleVisibility','off');
+        xline(ax_psd,40, 'Color',[0.8 0.7 0.3],'LineWidth',0.8,'Label','40 Hz','HandleVisibility','off');
+        xline(ax_psd,50, 'Color',[0.8 0.4 0.4],'LineWidth',0.8,'LineStyle','--','Label','50 Hz','HandleVisibility','off');
         if ~isempty(detected_freqs)
             for df = detected_freqs
                 xline(ax_psd,df,'Color',[0.9 0.85 0.2],'LineWidth',1.1,'LineStyle','--', ...
-                      'Label',sprintf('%.1fHz',df));
+                      'Label',sprintf('%.1fHz',df),'HandleVisibility','off');
             end
         end
         hold(ax_psd,'off');
+        psd_vals = [Praw(Praw>0); Pfilt(Pfilt>0)];
+        if mas_idx > 0, psd_vals = [psd_vals; Pmas(Pmas>0)]; end
+        if ~isempty(psd_vals)
+            ylim(ax_psd, [min(psd_vals)*0.1, max(psd_vals)*100]);
+        end
         xlim(ax_psd,[0 120]);
         title(ax_psd,'Power Spectral Density','Color',[0.9 0.9 0.9]);
         legend(ax_psd,'Location','northeast','TextColor',[0.8 0.8 0.8], ...
@@ -1421,10 +1315,6 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             r_val = 0.990;
             bw3db = 2*(1 - r_val)*50/pi;
             lines_out{end+1} = sprintf('  Notch -3dB BW: %.3f Hz', bw3db);
-        elseif strcmp(notch_type, 'N10')
-            lines_out{end+1} = '  N10 PSD cap: 0.5-40 Hz + 45-55 Hz line band, no boosting.';
-            lines_out{end+1} = '  Max attenuation: ~18.4 dB in-band, ~9.1 dB QRS guard, ~30.5 dB at 50 Hz.';
-            lines_out{end+1} = sprintf('  %s', state.n10.ref_label);
         end
         lines_out{end+1} = sep;
 
@@ -1456,21 +1346,39 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         else
             robust_peak = abs_sig(max(1, round(0.95 * numel(abs_sig))));
         end
-        total_inject_amp = 0.06 * max(robust_peak, 1e-3);
         t_inj = (0:N-1)' / Fs;
         rng('shuffle');
-        if strcmp(notch_type, 'N9')
-            inj_freqs  = generate_n9_injection_freqs(Fs, state.inject_n_tones);
-        elseif strcmp(notch_type, 'N10')
-            inj_freqs  = generate_n10_injection_freqs(Fs, state.inject_n_tones);
-        else
-            inj_freqs  = generate_random_injection_freqs(Fs, state.inject_n_tones);
-        end
-        inject_amp = total_inject_amp / sqrt(max(numel(inj_freqs),1));
+        inj_freqs = generate_random_injection_freqs(Fs, state.inject_n_tones);
+
+        % Scale injected tones by PSD, not only by time-domain amplitude.
+        % A narrow sinusoid concentrates energy into a few PSD bins, so a
+        % 6% time-domain tone can become an unrealistic 40 dB+ spectral spike.
+        % Keep the synthetic interference around 18 dB above the local clean
+        % PSD near the injected frequencies, capped at 3% robust ECG peak.
+        unit_noise = zeros(N,1);
         noise_composite = zeros(N,1);
         for fi = 1:numel(inj_freqs)
-            noise_composite = noise_composite + inject_amp * sin(2*pi*inj_freqs(fi)*t_inj);
+            unit_noise = unit_noise + sin(2*pi*inj_freqs(fi)*t_inj);
         end
+        [P_unit, f_unit] = safe_pwelch(unit_noise, Fs, NFFT);
+        target_ratio = 10^(18/10);
+        psd_scale = inf;
+        for fi = 1:numel(inj_freqs)
+            clean_band = f_pw >= inj_freqs(fi)-2 & f_pw <= inj_freqs(fi)+2;
+            unit_band  = f_unit >= inj_freqs(fi)-2 & f_unit <= inj_freqs(fi)+2;
+            clean_ref  = max(Praw(clean_band));
+            unit_ref   = max(P_unit(unit_band));
+            if isfinite(clean_ref) && isfinite(unit_ref) && unit_ref > 0
+                psd_scale = min(psd_scale, sqrt(target_ratio * max(clean_ref, realmin) / unit_ref));
+            end
+        end
+        amp_cap = 0.03 * max(robust_peak, 1e-3) / max(1, max(abs(unit_noise)));
+        if ~isfinite(psd_scale)
+            inject_scale = amp_cap;
+        else
+            inject_scale = min(psd_scale, amp_cap);
+        end
+        noise_composite = inject_scale * unit_noise;
         sig_noisy = sig_in + noise_composite;
 
         if bpf_idx > 0
@@ -1479,15 +1387,13 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             filt_noisy = sig_noisy;
         end
         if notch_idx > 0
-            n10_inject_ref = [];
-            if strcmp(notch_type, 'N10')
-                if bpf_idx > 0
-                    n10_inject_ref = apply_biquad(sos_bpf_data, sig_in);
-                else
-                    n10_inject_ref = sig_in;
-                end
+            inject_ref = [];
+            if strcmp(notch_type, 'N6')
+                % N6 detects from the pre-BPF noisy signal so it can find PLI
+                % that the BPF has already attenuated in filt_noisy.
+                inject_ref = sig_noisy;
             end
-            filt_noisy = apply_selected_notch(filt_noisy, notch_idx, Fs, bpf_idx, sos_bpf_data, n10_inject_ref);
+            filt_noisy = apply_selected_notch(filt_noisy, notch_idx, Fs, bpf_idx, sos_bpf_data, inject_ref);
         end
 
         [P_noisy,  f_ni] = safe_pwelch(sig_noisy,  Fs, NFFT);
@@ -1498,33 +1404,33 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             rejection_db(fi) = 10*log10(sum(P_noisy(band)) / (sum(P_fnoisy(band)) + 1e-30));
         end
 
-        % Noise injection plot — first 10 s window
+        % Noise injection plot — first 10 s window; show only filtered output.
+        % Plotting the noisy trace alongside causes fit_ylim_to_window to scale
+        % to the injected sinusoid amplitude, making the filtered ECG look tiny.
         t_show_q = min(10, t_s_data(end));
         idx_q    = t_s_data <= t_show_q;
-        cla(ax_inject); hold(ax_inject,'on');
-        plot(ax_inject,t_s_data(idx_q),sig_in(idx_q), ...
-             'Color',[0.5 0.5 0.55],'LineWidth',0.5,'DisplayName','Clean ECG');
-        plot(ax_inject,t_s_data(idx_q),sig_noisy(idx_q), ...
-             'Color',[0.85 0.45 0.15],'LineWidth',0.7,'DisplayName','+ injected noise');
+        cla(ax_inject);
         plot(ax_inject,t_s_data(idx_q),filt_noisy(idx_q), ...
-             'Color',[0.3 0.75 0.95],'LineWidth',1.1,'DisplayName','Filtered');
-        hold(ax_inject,'off');
+             'Color',[0.3 0.75 0.95],'LineWidth',1.1);
         freq_str = strjoin(arrayfun(@(f) sprintf('%.2f Hz',f),inj_freqs,'UniformOutput',false),' + ');
-        title(ax_inject,sprintf('Noise Injection  |  %s  |  6%% robust peak level',freq_str),'Color',[0.9 0.9 0.9]);
-        legend(ax_inject,'Location','northeast','TextColor',[0.8 0.8 0.8], ...
-               'Color',[0.1 0.1 0.12],'EdgeColor',[0.35 0.35 0.35],'FontSize',8);
+        title(ax_inject,sprintf('Filtered output after injecting %s at capped 18 dB PSD level',freq_str),'Color',[0.9 0.9 0.9]);
         ylabel(ax_inject,'mV','Color',[0.8 0.8 0.8]);
         xlabel(ax_inject,'Time (s)','Color',[0.8 0.8 0.8]);
         xlim(ax_inject,[0 t_show_q]);
         fit_ylim_to_window(ax_inject);
 
         cla(ax_noise); hold(ax_noise,'on');
+        ax_noise.YScale = 'log';
         semilogy(ax_noise,f_pw,Praw, 'Color',[0.55 0.55 0.60],'LineWidth',0.8,'DisplayName','Clean ECG');
         semilogy(ax_noise,f_ni,P_noisy, 'Color',[0.85 0.45 0.15],'LineWidth',0.9,'DisplayName','+ noise');
         semilogy(ax_noise,f_ni,P_fnoisy,'Color',[0.3 0.75 0.95],'LineWidth',1.3,'DisplayName','Filtered');
         for fi = 1:numel(inj_freqs)
             xline(ax_noise,inj_freqs(fi),'Color',[0.9 0.8 0.2],'LineWidth',1.0,'LineStyle','--', ...
-                  'Label',sprintf('%.2f Hz',inj_freqs(fi)));
+                  'Label',sprintf('%.2f Hz',inj_freqs(fi)),'HandleVisibility','off');
+        end
+        psd_n_vals = [Praw(Praw>0); P_noisy(P_noisy>0); P_fnoisy(P_fnoisy>0)];
+        if ~isempty(psd_n_vals)
+            ylim(ax_noise, [min(psd_n_vals)*0.1, max(psd_n_vals)*100]);
         end
         xlim(ax_noise,[0 min(130,Fs/2)]);
         hold(ax_noise,'off');
@@ -1565,10 +1471,6 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         qlines{end+1,1} = '';
         qlines{end+1,1} = '  1) SYNTHETIC NOISE INJECTION TEST';
         qlines{end+1,1} = sprintf('  Frequencies: %s', freq_str);
-        if strcmp(notch_type, 'N10')
-            qlines{end+1,1} = '  N10 test tones include ECG-band tones and 50 Hz when Fs permits.';
-            qlines{end+1,1} = '  The clean pre-injection ECG is passed as the normal PSD target.';
-        end
         for fi = 1:numel(inj_freqs)
             qlines{end+1,1} = sprintf('  %-22s  rejection: %+.1f dB   %s', ...
                 sprintf('%.2f Hz', inj_freqs(fi)), rejection_db(fi), rejection_label(rejection_db(fi)));
@@ -1721,9 +1623,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = ref; ref_lbl = '|a| IMU0 (motion-band z)';
 
             case 2   % M2: NLMS |a| 2-site (LA+RA)
-                ref   = [imu.mag0_ac, imu.mag1_ac];
+                ref   = [imu.mag1_ac, imu.mag2_ac];
                 out   = mas_nlms(ecg_filtered, ref, 0.01, EPS);
-                ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [2-site]';
+                ref_d = imu.mag1_ac; ref_lbl = '|a| IMU1/LA (g) [2-site]';
 
             case 3   % M3: NLMS |a| 3-site (LA+RA+LL)
                 ref   = rt_condition_mas_reference([imu.mag0_ac, imu.mag1_ac, imu.mag2_ac], Fs);
@@ -1737,9 +1639,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = ref; ref_lbl = '|a| IMU0 (g) [RLS]';
 
             case 5   % M5: RLS |a| 2-site (LA+RA)
-                ref   = [imu.mag0_ac, imu.mag1_ac];
+                ref   = [imu.mag1_ac, imu.mag2_ac];
                 out   = mas_rls(ecg_filtered, ref, 0.999, EPS);
-                ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [RLS 2-site]';
+                ref_d = imu.mag1_ac; ref_lbl = '|a| IMU1/LA (g) [RLS 2-site]';
 
             case 6   % M6: RLS |a| 3-site (LA+RA+LL)
                 ref   = rt_condition_mas_reference([imu.mag0_ac, imu.mag1_ac, imu.mag2_ac], Fs);
@@ -1753,10 +1655,10 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [3-axis]';
 
             case 8   % M8: NLMS 3-axis 2-site (LA+RA)
-                ref   = [imu.ax0_ac, imu.ay0_ac, imu.az0_ac, ...
-                         imu.ax1_ac, imu.ay1_ac, imu.az1_ac];
+                ref   = [imu.ax1_ac, imu.ay1_ac, imu.az1_ac, ...
+                         imu.ax2_ac, imu.ay2_ac, imu.az2_ac];
                 out   = mas_nlms(ecg_filtered, ref, 0.01, EPS);
-                ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [3-axis 2-site]';
+                ref_d = imu.mag1_ac; ref_lbl = '|a| IMU1/LA (g) [3-axis 2-site]';
 
             case 9   % M9: NLMS 3-axis 3-site (LA+RA+LL)
                 ref   = rt_condition_mas_reference([imu.ax0_ac, imu.ay0_ac, imu.az0_ac, ...
@@ -1772,10 +1674,10 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = ref; ref_lbl = '|a| IMU0 (g) [VS-NLMS]';
 
             case 11  % M11: VS-NLMS |a| 2-site (LA+RA)
-                ref0  = imu.mag0_ac - mean(imu.mag0_ac);
-                ref1  = imu.mag1_ac - mean(imu.mag1_ac);
+                ref0  = imu.mag1_ac - mean(imu.mag1_ac);
+                ref1  = imu.mag2_ac - mean(imu.mag2_ac);
                 out   = mas_vs_nlms(ecg_filtered, [ref0, ref1], 0.995, 0.005, 0.02, EPS, 16);
-                ref_d = ref0; ref_lbl = '|a| IMU0 (g) [VS-NLMS 2-site]';
+                ref_d = ref0; ref_lbl = '|a| IMU1/LA (g) [VS-NLMS 2-site]';
 
             case 12  % M12: VS-NLMS |a| 3-site (LA+RA+LL)
                 ref0  = imu.mag0_ac - mean(imu.mag0_ac);
@@ -1791,9 +1693,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = ref; ref_lbl = '|g| IMU0 (deg/s)';
 
             case 14  % M14: NLMS |g| 2-site (LA+RA)
-                ref   = [imu.gmag0_ac, imu.gmag1_ac];
+                ref   = [imu.gmag1_ac, imu.gmag2_ac];
                 out   = mas_nlms(ecg_filtered, ref, 0.01, EPS);
-                ref_d = imu.gmag0_ac; ref_lbl = '|g| IMU0 (deg/s) [2-site]';
+                ref_d = imu.gmag1_ac; ref_lbl = '|g| IMU1/LA (deg/s) [2-site]';
 
             case 15  % M15: NLMS |g| 3-site (LA+RA+LL)
                 ref   = [imu.gmag0_ac, imu.gmag1_ac, imu.gmag2_ac];
@@ -1808,12 +1710,12 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [6-axis]';
 
             case 17  % M17: NLMS 6-axis 2-site (LA+RA)
-                ref   = [imu.ax0_ac, imu.ay0_ac, imu.az0_ac, ...
-                         imu.gx0_ac, imu.gy0_ac, imu.gz0_ac, ...
-                         imu.ax1_ac, imu.ay1_ac, imu.az1_ac, ...
-                         imu.gx1_ac, imu.gy1_ac, imu.gz1_ac];
+                ref   = [imu.ax1_ac, imu.ay1_ac, imu.az1_ac, ...
+                         imu.gx1_ac, imu.gy1_ac, imu.gz1_ac, ...
+                         imu.ax2_ac, imu.ay2_ac, imu.az2_ac, ...
+                         imu.gx2_ac, imu.gy2_ac, imu.gz2_ac];
                 out   = mas_nlms(ecg_filtered, ref, 0.01, EPS);
-                ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [6-axis 2-site]';
+                ref_d = imu.mag1_ac; ref_lbl = '|a| IMU1/LA (g) [6-axis 2-site]';
 
             case 18  % M18: NLMS 6-axis 3-site (LA+RA+LL)
                 ref   = rt_condition_mas_reference([imu.ax0_ac, imu.ay0_ac, imu.az0_ac, ...
@@ -1832,9 +1734,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 ref_d = ref; ref_lbl = '|a| IMU0 (g) [blanked+leaky]';
 
             case 20  % M20: Blanked Leaky NLMS |a| 2-site (LA+RA)
-                ref   = [imu.mag0_ac, imu.mag1_ac];
+                ref   = [imu.mag1_ac, imu.mag2_ac];
                 out   = mas_blanked_leaky_nlms(ecg_filtered, ref, 0.05, 0.02, EPS, Fs);
-                ref_d = imu.mag0_ac; ref_lbl = '|a| IMU0 (g) [blanked+leaky 2-site]';
+                ref_d = imu.mag1_ac; ref_lbl = '|a| IMU1/LA (g) [blanked+leaky 2-site]';
 
             case 21  % M21: Blanked Leaky NLMS |a| 3-site (LA+RA+LL)
                 ref   = rt_condition_mas_reference([imu.mag0_ac, imu.mag1_ac, imu.mag2_ac], Fs);
@@ -1858,14 +1760,14 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
                 [out, ref_d, ref_lbl] = mas_rt_coherence_band_nlms( ...
                     ecg_filtered, ref_bank, ref_names, Fs, 10.0, 300, 0.40, 3, 0.60, 0.03, 0.02, EPS, 16, 0.85);
 
-            case 25  % M25: Beach-style staged active/reference electrode correction
-                [ref0, names0] = build_rt_reference_bank(imu, Fs, 'site0');
-                [ref1, names1] = build_rt_reference_bank(imu, Fs, 'site1');
+            case 25  % M25: staged active-electrode correction, LA then RA
+                [ref0, names0] = build_rt_reference_bank(imu, Fs, 'site1');
+                [ref1, names1] = build_rt_reference_bank(imu, Fs, 'site2');
                 [out, ref_d, ref_lbl] = mas_rt_staged_feature_select_nlms( ...
                     ecg_filtered, ref0, names0, ref1, names1, Fs, 10.0, 300, 0.10, 0.03, 0.02, EPS, 16);
 
             case 26  % M26: differential active-electrode references only
-                [ref_bank, ref_names] = build_rt_reference_bank(imu, Fs, 'diff01');
+                [ref_bank, ref_names] = build_rt_reference_bank(imu, Fs, 'diff12');
                 [out, ref_d, ref_lbl] = mas_rt_coherence_band_nlms( ...
                     ecg_filtered, ref_bank, ref_names, Fs, 10.0, 300, 0.35, 3, 0.60, 0.03, 0.02, EPS, 16, 0.85);
 
@@ -1910,19 +1812,19 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
     end
 
     function [ref_bank, ref_names] = build_auto_mas_refs(imu)
-        % M10 reference bank. IMU0=LA, IMU1=RA only.
-        % IMU2=LL (RLD site) excluded — RLD motion does not affect the
-        % differential ECG signal and adds noise to the reference bank.
+        % Active-electrode reference bank. IMU1=LA, IMU2=RA only.
+        % IMU0=LL excluded: lower-thorax motion is not an active ECG
+        % electrode motion reference for Lead I/Lead II differential paths.
         ref_bank = [
-            imu.ax0_ac, imu.ay0_ac, imu.az0_ac, imu.gx0_ac, imu.gy0_ac, imu.gz0_ac, ...
             imu.ax1_ac, imu.ay1_ac, imu.az1_ac, imu.gx1_ac, imu.gy1_ac, imu.gz1_ac, ...
-            imu.ax0_ac-imu.ax1_ac, imu.ay0_ac-imu.ay1_ac, imu.az0_ac-imu.az1_ac, ...
-            imu.gx0_ac-imu.gx1_ac, imu.gy0_ac-imu.gy1_ac, imu.gz0_ac-imu.gz1_ac
+            imu.ax2_ac, imu.ay2_ac, imu.az2_ac, imu.gx2_ac, imu.gy2_ac, imu.gz2_ac, ...
+            imu.ax1_ac-imu.ax2_ac, imu.ay1_ac-imu.ay2_ac, imu.az1_ac-imu.az2_ac, ...
+            imu.gx1_ac-imu.gx2_ac, imu.gy1_ac-imu.gy2_ac, imu.gz1_ac-imu.gz2_ac
         ];
         ref_names = {
-            'ax0','ay0','az0','gx0','gy0','gz0', ...
             'ax1','ay1','az1','gx1','gy1','gz1', ...
-            'dax01','day01','daz01','dgx01','dgy01','dgz01'
+            'ax2','ay2','az2','gx2','gy2','gz2', ...
+            'dax12','day12','daz12','dgx12','dgy12','dgz12'
         };
 
         good = false(1, size(ref_bank,2));
@@ -2259,8 +2161,8 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
             case 22, notes = '  M22 Selective 2.9 Hz gz1 — empirical result from phase3_diagnose_advanced: narrowband held-out reduction where broadband MAS failed.';
             case 23, notes = '  M23 RT best feature+lag NLMS — 10 s calibration selects accel/gyro/velocity/jerk/angular-accel/differential refs with causal lag, then runs blanked leaky NLMS.';
             case 24, notes = '  M4  RT coherent-band NLMS - selects only IMU feature/lag/band candidates with strong ECG-IMU coherence, then subtracts those narrowband artefact estimates.';
-            case 25, notes = '  M25 RT staged LA/RA NLMS — Beach-style two-stage active/reference electrode correction using separately selected feature+lag refs.';
-            case 26, notes = '  M5  RT differential coherent-band - same coherent-band NLMS idea as M4, but uses IMU0-IMU1 differential references to match differential ADS1293 ECG motion.';
+            case 25, notes = '  M25 RT staged LA/RA NLMS - two-stage active-electrode correction using IMU1=LA then IMU2=RA feature+lag refs.';
+            case 26, notes = '  M5  RT differential coherent-band - same coherent-band NLMS idea as M4, but uses IMU1-IMU2 differential references to match active-electrode ADS1293 ECG motion.';
             case 27, notes = '  M27 Aggressive all-IMU NLMS — all IMU sites/features, lower selection threshold, up to 8 refs, 500 ms lag, μ=0.08, 32 taps. Higher distortion risk.';
             case 28, notes = '  M28 Aggressive all-IMU bands — all features, lower gamma^2 threshold, up to 6 bands, wider 1 Hz bands, subtract gain 1.25. Diagnostic only if morphology degrades.';
             case 29, notes = '  M29 AD8233 OUT-matched all-IMU — filters IMU features through causal 7.2 Hz high-pass + 25 Hz low-pass shaping before selection, matching the AD8233CB-EBZ OUT path more closely.';
@@ -2559,7 +2461,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
 %% ═══════════════════════════════════════════════════════════════════════
 
     function H = adaptive_freq_response(notch_type, Fs_design, Nfft)
-        if strcmp(notch_type,'N9')
+        if strcmp(notch_type,'N6')
             H = ones(Nfft/2+1,1);
             return;
         end
@@ -2691,37 +2593,22 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
     end
 
     function freqs = generate_n9_injection_freqs(Fs, n_tones)
-        n_tones = max(1,round(n_tones));
-        n_z3 = max(1,floor(n_tones/2)); n_rand = n_tones - n_z3;
-        lo_z3 = 52.0; hi_z3 = max(lo_z3+5, Fs/2-5);
-        if hi_z3 <= lo_z3+1, freqs = generate_random_injection_freqs(Fs,n_tones); return; end
-        freqs_z3   = generate_random_injection_freqs_range(lo_z3, hi_z3, n_z3);
-        freqs_rand = generate_random_injection_freqs(Fs, n_rand);
-        freqs = sort(unique([freqs_z3, freqs_rand]));
-        while numel(freqs) < n_tones
-            freqs(end+1) = lo_z3+(hi_z3-lo_z3)*rand(); %#ok<AGROW>
-            freqs = sort(unique(freqs));
-        end
-        freqs = freqs(1:n_tones);
-    end
-
-    function freqs = generate_n10_injection_freqs(Fs, n_tones)
-        % N10 targets ECG-band excess plus the 50 Hz line band.
+        % N6 targets PLI in Zone 3 (45 Hz – Nyquist). Always include 50 Hz;
+        % additional tones fill Zone 3 only — never the ECG band. Injecting
+        % ECG-band tones triggered Zone 2 detection and corrupted the ECG.
         n_tones = max(1, round(n_tones));
-        lo_hz = 2.0;
-        hi_hz = min(38.0, Fs/2 - 2.0);
-        if hi_hz <= lo_hz + 0.5
-            freqs = generate_random_injection_freqs(Fs, n_tones);
+        lo_z3   = 50.0;
+        hi_z3   = max(lo_z3 + 1, Fs/2 - 5);
+        if lo_z3 >= Fs/2
+            freqs = 45.0 * ones(1, n_tones);
             return;
         end
-        if Fs/2 > 55.0 && n_tones > 1
-            freqs = [50.0, generate_random_injection_freqs_range(lo_hz, hi_hz, n_tones-1)];
-            freqs = sort(freqs);
-        elseif Fs/2 > 55.0
-            freqs = 50.0;
-        else
-            freqs = generate_random_injection_freqs_range(lo_hz, hi_hz, n_tones);
+        freqs = 50.0;
+        if n_tones > 1 && hi_z3 > 52.0
+            extra = generate_random_injection_freqs_range(52.0, hi_z3, n_tones - 1);
+            freqs = sort([freqs, extra]);
         end
+        freqs = freqs(1:min(n_tones, numel(freqs)));
     end
 
     function freqs = generate_random_injection_freqs_range(lo_hz, hi_hz, n_tones)
@@ -4284,9 +4171,10 @@ function BPF = build_bpf_struct()
                  'B4: Chebyshev II 10th  0.5-40 Hz', ...
                  'B5: Elliptic 4th  0.5-40 Hz', ...
                  'B6: Butterworth 8th  0.05-40 Hz', ...
-                 'B7: Butterworth 8th  0.75-40 Hz'};
-    passbands = {[0.5 40],[0.5 40],[0.05 150],[0.5 40],[0.5 40],[0.05 40],[0.75 40]};
-    standards = {'IEC 60601-2-27','Lightweight','IEC 60601-2-25','AHA monitor','Min-order','ST-segment','Aggressive baseline'};
+                 'B7: Butterworth 8th  0.75-40 Hz', ...
+                 'B8: Butterworth 12th  0.5-40 Hz'};
+    passbands = {[0.5 40],[0.5 40],[0.05 150],[0.5 40],[0.5 40],[0.05 40],[0.75 40],[0.5 40]};
+    standards = {'IEC 60601-2-27','Lightweight','IEC 60601-2-25','AHA monitor','Min-order','ST-segment','Aggressive baseline','High-attenuation'};
     for b = 1:numel(names)
         c = build_bpf_at_fs(b, 500); n_stg = size(c,1);
         BPF(b).sos      = c; %#ok<AGROW>
@@ -4299,7 +4187,7 @@ end
 
 function sos_ml = build_bpf_at_fs(bpf_idx, Fs)
     Ny = Fs / 2;
-    passbands = {[0.5 40],[0.5 40],[0.05 150],[0.5 40],[0.5 40],[0.05 40],[0.75 40]};
+    passbands = {[0.5 40],[0.5 40],[0.05 150],[0.5 40],[0.5 40],[0.05 40],[0.75 40],[0.5 40]};
     pb = passbands{bpf_idx};
     pb(1) = max(pb(1), 0.01);
     pb(2) = min(pb(2), 0.99*Ny);
@@ -4324,6 +4212,7 @@ function sos_ml = build_bpf_at_fs(bpf_idx, Fs)
             case 5, [z,p,k] = ellip(2, 0.5, 40, Wn, 'bandpass');
             case 6, [z,p,k] = butter(4,  Wn, 'bandpass');
             case 7, [z,p,k] = butter(4,  Wn, 'bandpass');
+            case 8, [z,p,k] = butter(6,  Wn, 'bandpass');
         end
         [sos_ml, g] = zp2sos(z, p, k);
         sos_ml(1,1:3) = sos_ml(1,1:3) * g;

@@ -59,11 +59,15 @@ def fix_sign(v: int) -> int:
     return v - 4_294_967_296 if v > 2_147_483_647 else v
 
 # -----------------------------------------------------------------------------
-ADS_SCALE = 400.0 / 8_388_607.0
+ADS1293_VREF_MV = 2400.0
+ADS1293_INA_GAIN = 3.5
+ADS1293_ADCMAX = 0xC35000  # R2=5, R3=16 ECG ADCMAX from the ADS1293 table.
+ADS_SCALE = (2.0 * ADS1293_VREF_MV / ADS1293_INA_GAIN) / ADS1293_ADCMAX
 ADS_DISPLAY_Y_MV = 1.5
 ADS_DISPLAY_CLIP_MV = ADS_DISPLAY_Y_MV * 0.95
 ADS_DISPLAY_STEP_MV = 0.75
-ADS_SAT_RAW = int(0.90 * 8_388_607)
+ADS_SAT_LOW_RAW = int(0.05 * ADS1293_ADCMAX)
+ADS_SAT_HIGH_RAW = int(0.95 * ADS1293_ADCMAX)
 
 def smooth_finite_display(y: np.ndarray) -> np.ndarray:
     y = y.astype(np.float32, copy=True)
@@ -83,7 +87,7 @@ def prepare_ads_display(raw_mV: np.ndarray, raw_codes: np.ndarray) -> tuple[np.n
         return raw_mV, 0.0, 0
     y_raw = raw_mV.astype(np.float32, copy=False)
     codes = raw_codes.astype(np.int32, copy=False)
-    usable = np.isfinite(y_raw) & (np.abs(codes) < ADS_SAT_RAW)
+    usable = np.isfinite(y_raw) & (codes > ADS_SAT_LOW_RAW) & (codes < ADS_SAT_HIGH_RAW)
     baseline = float(np.median(y_raw[usable])) if np.any(usable) else 0.0
     y = y_raw - baseline
     keep = usable & (np.abs(y) <= ADS_DISPLAY_CLIP_MV)
@@ -591,7 +595,8 @@ class ECGTab(QtWidgets.QWidget):
 
         if ads:
             rail_warn = ""
-            if abs(last.ads_ch[0]) >= ADS_SAT_RAW or abs(last.ads_ch[1]) >= ADS_SAT_RAW:
+            if (last.ads_ch[0] <= ADS_SAT_LOW_RAW or last.ads_ch[0] >= ADS_SAT_HIGH_RAW or
+                    last.ads_ch[1] <= ADS_SAT_LOW_RAW or last.ads_ch[1] >= ADS_SAT_HIGH_RAW):
                 rail_warn = " Rail warn : ADS code near full-scale; check electrodes/RLD.\n"
             data_txt = (
                 f" Last ECG  : {last.ads_mV[0]:+.4f} mV\n"
@@ -604,8 +609,9 @@ class ECGTab(QtWidgets.QWidget):
             matlab_txt = (
                 f"  d=readmatrix('resting_*.txt')\n"
                 f"  t=d(:,1)/1e6\n"
-                f"  leadI=d(:,2)*(400/8388607)\n"
-                f"  leadII=d(:,3)*(400/8388607)\n"
+                f"  ads_scale=(2*2400/3.5)/hex2dec('C35000')\n"
+                f"  leadI=d(:,2)*ads_scale\n"
+                f"  leadII=d(:,3)*ads_scale\n"
             )
         elif last.has_ecg_debug:
             debug_txt = (

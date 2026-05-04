@@ -423,8 +423,8 @@ dt = diff(t_s);
 dt = dt(isfinite(dt) & dt > 0);
 Fs = 1 / median(dt);
 
-ecg_mV = double(data(:,2)) * (1800 / 4096);
-imu = parse_imu_columns(data);
+[ecg_mV, imuStartCol] = decode_ecg_columns(data);
+imu = parse_imu_columns(data, imuStartCol);
 
 rec = struct();
 rec.id = manifestRow.recording_id;
@@ -468,12 +468,30 @@ for cc = 2:size(data, 2)
 end
 end
 
-function imu = parse_imu_columns(data)
+function [ecg_mV, imuStartCol] = decode_ecg_columns(data)
+nCols = size(data, 2);
+ADS_SCALE_MV = (2 * 2400 / 3.5) / hex2dec('C35000');
+if nCols == 21
+    ecg_mV = double(data(:,2)) * ADS_SCALE_MV;
+    imuStartCol = 4;
+elseif nCols == 23
+    ecg_mV = double(data(:,21)) * ADS_SCALE_MV;
+    imuStartCol = 3;
+else
+    ecg_mV = double(data(:,2)) * (1800 / 4096);
+    imuStartCol = 3;
+end
+end
+
+function imu = parse_imu_columns(data, imuStartCol)
+if nargin < 2 || isempty(imuStartCol)
+    imuStartCol = 3;
+end
 N = size(data, 1);
 raw = nan(N, 18);
-available = max(0, min(18, size(data,2) - 2));
+available = max(0, min(18, size(data,2) - imuStartCol + 1));
 if available > 0
-    raw(:,1:available) = data(:,3:(2+available));
+    raw(:,1:available) = data(:,imuStartCol:(imuStartCol+available-1));
 end
 
 imu = struct();

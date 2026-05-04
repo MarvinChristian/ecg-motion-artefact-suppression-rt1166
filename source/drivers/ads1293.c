@@ -280,7 +280,9 @@ status_t ADS1293_IsDataReady(ads1293_t *dev, bool *ready)
         return st;
     }
 
-    *ready = ((status & 0x07U) != 0U);
+    /* The current stream records Lead I and Lead II, so wait until both
+       channel data-ready bits are set before reading the burst. */
+    *ready = ((status & 0x03U) == 0x03U);
     return kStatus_Success;
 }
 

@@ -7,13 +7,13 @@ function export_tree_to_c(model_or_path, out_path)
 % Usage
 % -----
 %   export_tree_to_c(model)              % model from train_epoch_classifier
-%   export_tree_to_c('path/epoch_classifier.mat')
+%   export_tree_to_c('path/epoch_classifier*.mat')
 %   export_tree_to_c(model, 'epoch_classifier.h')
 %
 % Parameters
 % ----------
 %   model_or_path : model struct from train_epoch_classifier, OR path to
-%                   the epoch_classifier.mat file saved by that function
+%                   an epoch_classifier*.mat file saved by the classifier GUI
 %   out_path      : output .h file path  [default: auto, written to outputs/]
 %
 % Output file
@@ -73,8 +73,12 @@ else
 end
 
 tree         = model.tree;
-featureNames = model.featureNames;
+featureNames = model_feature_names(model, tree);
 nFeat        = numel(featureNames);
+cv_acc       = model_metric(model, 'kfold_acc', 'acc');
+cv_sens      = model_metric(model, 'kfold_sens', 'sens');
+cv_spec      = model_metric(model, 'kfold_spec', 'spec');
+max_depth    = model_depth(model, tree);
 
 % ── Extract tree structure from MATLAB ClassificationTree ─────────────────────
 % MATLAB stores the tree internally with NaN thresholds at leaf nodes and
@@ -108,7 +112,7 @@ for nn = 1:nNodes
         leaf_classes   = tree.ClassNames;
         node_class_idx = tree.ClassProb(nn,:);
         [~, ci]        = max(node_class_idx);
-        class_out(nn)  = uint8(str2double(leaf_classes{ci}));
+        class_out(nn)  = uint8(class_value(leaf_classes, ci));
         feat_idx(nn)  = int16(-1);
     end
 end
@@ -132,7 +136,7 @@ fprintf(fid, '/*\n');
 fprintf(fid, ' * epoch_classifier.h\n');
 fprintf(fid, ' *\n');
 fprintf(fid, ' * Motion-aware ECG epoch quality classifier — decision tree.\n');
-fprintf(fid, ' * Generated from MATLAB train_epoch_classifier.m\n');
+fprintf(fid, ' * Generated from MATLAB epoch classifier model\n');
 fprintf(fid, ' * Generated: %s\n', char(datetime('now')));
 fprintf(fid, ' *\n');
 fprintf(fid, ' * Usage:\n');
@@ -140,10 +144,10 @@ fprintf(fid, ' *   #include "epoch_classifier.h"\n');
 fprintf(fid, ' *   int label = epoch_classify(features);   // 1=clean, 0=corrupted\n');
 fprintf(fid, ' *\n');
 fprintf(fid, ' * Training summary:\n');
-fprintf(fid, ' *   CV accuracy:    %.1f%%\n', model.kfold_acc);
-fprintf(fid, ' *   CV sensitivity: %.1f%%\n', model.kfold_sens);
-fprintf(fid, ' *   CV specificity: %.1f%%\n', model.kfold_spec);
-fprintf(fid, ' *   Tree depth:     %d\n',     model.max_depth);
+fprintf(fid, ' *   CV accuracy:    %.1f%%\n', cv_acc);
+fprintf(fid, ' *   CV sensitivity: %.1f%%\n', cv_sens);
+fprintf(fid, ' *   CV specificity: %.1f%%\n', cv_spec);
+fprintf(fid, ' *   Tree depth:     %d\n',     max_depth);
 fprintf(fid, ' *   Nodes:          %d\n',     nNodes);
 fprintf(fid, ' */\n\n');
 
@@ -201,8 +205,8 @@ fprintf(fid, ' *           Feature order matches the index mapping above.\n');
 fprintf(fid, ' * Returns: 1 if the epoch is classified as ECG-acceptable,\n');
 fprintf(fid, ' *          0 if the epoch is classified as ECG-corrupted.\n');
 fprintf(fid, ' *\n');
-fprintf(fid, ' * The loop executes at most max_depth comparisons. At depth %d\n', model.max_depth);
-fprintf(fid, ' * that is %d comparisons per call, well under 1 us at 600 MHz.\n', model.max_depth);
+fprintf(fid, ' * The loop executes at most max_depth comparisons. At depth %d\n', max_depth);
+fprintf(fid, ' * that is %d comparisons per call, well under 1 us at 600 MHz.\n', max_depth);
 fprintf(fid, ' */\n');
 fprintf(fid, 'static inline int epoch_classify(const float *features)\n');
 fprintf(fid, '{\n');
@@ -292,17 +296,77 @@ end
 end
 
 % =============================================================================
+% Model compatibility helpers
+% =============================================================================
+
+function featureNames = model_feature_names(model, tree)
+if isfield(model, 'featureNames') && ~isempty(model.featureNames)
+    featureNames = model.featureNames;
+elseif isprop(tree, 'PredictorNames') && ~isempty(tree.PredictorNames)
+    featureNames = tree.PredictorNames;
+else
+    error('Model does not contain featureNames and tree.PredictorNames is empty.');
+end
+if isstring(featureNames)
+    featureNames = cellstr(featureNames);
+end
+end
+
+function v = model_metric(model, primary_field, fallback_field)
+if isfield(model, primary_field) && ~isempty(model.(primary_field))
+    v = model.(primary_field);
+elseif isfield(model, fallback_field) && ~isempty(model.(fallback_field))
+    v = model.(fallback_field);
+else
+    v = NaN;
+end
+end
+
+function d = model_depth(model, tree)
+if isfield(model, 'max_depth') && ~isempty(model.max_depth) && isfinite(model.max_depth)
+    d = model.max_depth;
+    return;
+end
+children = tree.Children;
+d = branch_depth(1, children);
+end
+
+function d = branch_depth(node, children)
+kids = children(node, :);
+kids = kids(kids > 0);
+if isempty(kids)
+    d = 0;
+else
+    child_depths = arrayfun(@(k) branch_depth(k, children), kids);
+    d = 1 + max(child_depths);
+end
+end
+
+function v = class_value(class_names, idx)
+if isnumeric(class_names) || islogical(class_names)
+    v = class_names(idx);
+elseif iscell(class_names)
+    v = str2double(class_names{idx});
+else
+    v = str2double(string(class_names(idx)));
+end
+if ~isfinite(v)
+    error('Could not convert tree class name at index %d to a numeric class.', idx);
+end
+end
+
+% =============================================================================
 % Path helpers
 % =============================================================================
 
 function fpath = find_latest_classifier_mat()
 paths   = local_paths();
 outRoot = fullfile(paths.subrepo, 'outputs');
-d = dir(fullfile(outRoot, '**', 'epoch_classifier.mat'));
+d = dir(fullfile(outRoot, '**', 'epoch_classifier*.mat'));
 if isempty(d)
-    error('No epoch_classifier.mat found. Run train_epoch_classifier first.');
+    error('No epoch_classifier*.mat found. Run a classifier training GUI first.');
 end
-[~, ix] = sort({d.folder}, 'descend');
+[~, ix] = sort([d.datenum], 'descend');
 fpath   = fullfile(d(ix(1)).folder, d(ix(1)).name);
 fprintf('Auto-selected classifier: %s\n', fpath);
 end

@@ -19,11 +19,11 @@ function label_epoch_gui(feature_mat_path)
 %
 % What each panel shows
 % ----------------------
-%   ECG panel   : BPF 0.5-40 Hz + 50 Hz notch (same as firmware pipeline).
+%   ECG panel   : selected BPF/notch from epochInfo, matching extraction.
 %                 The yellow shaded band is the actual epoch window.
 %                 Context (0.5 s each side) shown in green outside the band.
 %   IMU panel   : 3D accel norm (gravity removed) per site.
-%                 Blue=site 0 LA, Red=site 1 RA, Green=site 2 LL.
+%                 Blue=site 0 LL, Red=site 1 LA, Green=site 2 RA.
 %                 Matching the IMU features used by the classifier.
 %   Bottom bar  : key feature values at a glance, current label,
 %                 and running review progress.
@@ -418,23 +418,24 @@ end
             return;
         end
 
-        % Display window: 0.5 s context on each side of the epoch
-        win_lo = max(rec.t_s(1),   t_start - app.ctxSec);
-        win_hi = min(rec.t_s(end), t_start + app.epochSec + app.ctxSec);
+        % Display window: 5 s centred on the epoch midpoint
+        epoch_mid = t_start + app.epochSec / 2;
+        win_lo = max(rec.t_s(1),   epoch_mid - 2.5);
+        win_hi = min(rec.t_s(end), epoch_mid + 2.5);
         seg    = rec.t_s >= win_lo & rec.t_s <= win_hi;
         t_seg  = rec.t_s(seg);
 
         % ── ECG ───────────────────────────────────────────────────────────────
-        ecg_seg = rec.ecg_filt(seg);
+        ecg_seg = rec.ecg_disp(seg);   % despike + BPF + notch + display baseline
         cla(app.ecgAx);
         if any(isfinite(ecg_seg))
-            if ~isempty(rec.ylim_ecg)
-                ylo = rec.ylim_ecg(1);
-                yhi = rec.ylim_ecg(2);
-            else
-                ylo = min(ecg_seg) - 0.05;
-                yhi = max(ecg_seg) + 0.05;
-            end
+            % Y-limits from 1st/99th pctile of visible data + 15% pad
+            sv  = sort(ecg_seg(isfinite(ecg_seg)));
+            nsv = numel(sv);
+            ylo = sv(max(1, round(0.01 * nsv)));
+            yhi = sv(min(nsv, max(1, round(0.99 * nsv))));
+            pad = max(0.05, 0.15 * max(yhi - ylo, eps));
+            ylo = ylo - pad;  yhi = yhi + pad;
             hold(app.ecgAx, 'on');
             if isfinite(ylo) && isfinite(yhi) && yhi > ylo
                 patch(app.ecgAx, ...
@@ -538,7 +539,7 @@ rec.t_s     = t_s;
 rec.Fs      = 1 / median(dt);
 if isempty(dt) || ~isfinite(rec.Fs) || rec.Fs <= 0; rec.Fs = NaN; end
 
-ADS_SCALE_MV = 1400 / 8388607;
+ADS_SCALE_MV = (2 * 2400 / 3.5) / hex2dec('C35000');
 nCols = size(data, 2);
 lead = lower(string(lead));
 if nCols == 21
@@ -559,13 +560,14 @@ switch lead
     case "diff12"; rec.ecg_raw = ch1 - ch2;
     otherwise; rec.ecg_raw = ch1;
 end
+rec.ecg_raw = gui_despike_ecg(rec.ecg_raw, rec.Fs);
 rec.ecg_raw = rec.ecg_raw - median(rec.ecg_raw, 'omitnan');
 rec.imu     = gui_parse_imu(data, imuStartCol);
 
 bpSOS    = gui_design_bpf(bpf_id, rec.Fs);
 
 ybp = rec.ecg_raw;
-if ~isempty(bpSOS); ybp = sosfilt(bpSOS, ybp); end
+if ~isempty(bpSOS); ybp = sosfilt(bpSOS, ybp - ybp(1)); end
 if lower(string(notch)) ~= "none"
     if exist('apply_notch', 'file') == 2
         ybp = apply_notch(ybp, char(notch), rec.Fs);
@@ -575,18 +577,8 @@ if lower(string(notch)) ~= "none"
     end
 end
 rec.ecg_filt = ybp;
-
-% Fixed Y-axis limits: 2nd–98th percentile of the full filtered recording,
-% padded 15%. Percentiles avoid artefact spikes compressing the clean signal.
-finite_vals = ybp(isfinite(ybp));
-if numel(finite_vals) > 20
-    lo = prctile(finite_vals, 2);
-    hi = prctile(finite_vals, 98);
-    pad = max(0.05, 0.15 * (hi - lo));
-    rec.ylim_ecg = [lo - pad, hi + pad];
-else
-    rec.ylim_ecg = [];
-end
+rec.ecg_disp = gui_display_baseline(ybp, rec.Fs);
+rec.ylim_ecg = [];  % computed per-window in update_display
 end
 
 function data = gui_read_numeric(fpath)
@@ -602,6 +594,14 @@ while true
 end
 fclose(fid);
 data = readmatrix(fpath, 'FileType','text', 'NumHeaderLines',headerLines);
+data = double(data);
+col_counts = sum(~isnan(data), 2);
+if ~isempty(col_counts)
+    modal_cols = mode(col_counts);
+    if modal_cols < size(data, 2)
+        data = data(:, 1:modal_cols);
+    end
+end
 data = double(data(all(isfinite(data),2),:));
 for cc = 2:size(data,2)
     w = data(:,cc) > 2147483647;
@@ -637,6 +637,7 @@ switch bpf_id
             [z,p,k] = butter(4, [lo2 hi], 'bandpass');
     case 7; lo7 = 0.75/Nyq; if lo7>=hi; return; end
             [z,p,k] = butter(4, [lo7 hi], 'bandpass');
+    case 8; [z,p,k] = butter(6, [lo  hi], 'bandpass');
     otherwise; return;
 end
 sos = zp2sos(z,p,k);
@@ -645,7 +646,7 @@ end
 function [nb,na] = gui_design_notch(notch, Fs)
 nb = 1; na = 1;
 if lower(string(notch)) == "none" || ~isfinite(Fs) || Fs<=0; return; end
-if any(upper(string(notch)) == ["N1","N3","N5","N6","N8","N9"]) && Fs>110
+if lower(string(notch)) ~= "none" && Fs > 110
     r=0.990; w0=2*pi*50/Fs;
     nb=[1,-2*cos(w0),1]; na=[1,-2*r*cos(w0),r^2];
 end
@@ -662,7 +663,7 @@ end
 function id = gui_bpf_to_id(name)
 s = upper(string(name));
 if s == "NONE"; id = 0; return; end
-tok = regexp(char(s), '^B([1-7])$', 'tokens', 'once');
+tok = regexp(char(s), '^B([1-8])$', 'tokens', 'once');
 if isempty(tok); id = 1; else; id = str2double(tok{1}); end
 end
 
@@ -702,4 +703,54 @@ if isfile(adsManifest)
 else
     paths.manifest = fullfile(paths.subrepo, 'config', 'recording_manifest.csv');
 end
+end
+
+function y = gui_despike_ecg(ecg, Fs)
+% MAD-based spike removal via linear interpolation — matches phase2_analyzer.
+ecg = double(ecg(:));
+y   = ecg;
+if numel(ecg) < 8 || ~isfinite(Fs) || Fs <= 0; return; end
+win = max(3, round(0.25 * Fs));
+win = min(win, max(3, numel(ecg)));
+if mod(win, 2) == 0; win = max(3, win - 1); end
+baseline = movmedian(ecg, win, 'Endpoints', 'shrink');
+residual = ecg - baseline;
+med_res  = median(residual, 'omitnan');
+mad_val  = median(abs(residual - med_res), 'omitnan');
+if ~isfinite(mad_val) || mad_val < 1e-12; return; end
+bad = abs(residual - med_res) > max(8 * mad_val, 1.5);
+if any(bad)
+    ii   = (1:numel(ecg))';
+    good = ~bad & isfinite(ecg);
+    if nnz(good) >= 2
+        y(bad) = interp1(ii(good), ecg(good), ii(bad), 'linear', 'extrap');
+    end
+end
+end
+
+function y = gui_display_baseline(ecg, Fs)
+% Double movmedian baseline subtraction — matches phase2_analyzer display_trace.
+% First pass (0.20 s) suppresses QRS; second pass (0.80 s) smooths result.
+ecg = double(ecg(:));
+if numel(ecg) < 8 || ~isfinite(Fs) || Fs <= 0
+    y = ecg - median(ecg, 'omitnan');
+    return;
+end
+good = isfinite(ecg);
+if nnz(good) >= 2 && any(~good)
+    ii = (1:numel(ecg))';
+    ecg(~good) = interp1(ii(good), ecg(good), ii(~good), 'linear', 'extrap');
+elseif nnz(good) < 2
+    y = zeros(size(ecg));
+    return;
+end
+qrs_win  = max(3, round(0.20 * Fs));
+qrs_win  = min(qrs_win, max(3, numel(ecg)));
+if mod(qrs_win, 2) == 0; qrs_win = max(3, qrs_win - 1); end
+tw_win   = max(3, round(0.80 * Fs));
+tw_win   = min(tw_win, max(3, numel(ecg)));
+if mod(tw_win, 2) == 0; tw_win = max(3, tw_win - 1); end
+baseline = movmedian(ecg, qrs_win, 'Endpoints', 'shrink');
+baseline = movmedian(baseline, tw_win, 'Endpoints', 'shrink');
+y = ecg - baseline;
 end

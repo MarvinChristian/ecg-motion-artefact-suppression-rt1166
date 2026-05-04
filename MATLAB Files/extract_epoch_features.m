@@ -6,13 +6,13 @@ function [X, y, featureNames, epochInfo] = extract_epoch_features(varargin)
 %
 % Algorithm-selected use, matching the simplified ECG/IMU sim style:
 %   [X,y,names,info] = extract_epoch_features( ...
-%       'lead','ch1', 'bpf','B7', 'notch','N9', ...
+%       'lead','ch1', 'bpf','B8', 'notch','N6', ...
 %       'label_algorithm','kurtosis');
 %
 % Supported selectors:
 %   lead            : 'ch1' | 'ch2' | 'diff12'
-%   bpf             : 'none' | 'B1' | ... | 'B7'
-%   notch           : 'none' | 'N1' | 'N3' | 'N5' | 'N6' | 'N8' | 'N9'
+%   bpf             : 'none' | 'B1' | ... | 'B8'
+%   notch           : 'none' | 'N1' | 'N2' | 'N3' | 'N4' | 'N5' | 'N6'
 %   label_algorithm : 'kurtosis' | 'motion_score' | 'hybrid'
 %
 % The default manifest is config/ads1293_recording_manifest.csv, which points
@@ -157,8 +157,8 @@ function opts = parse_options(varargin)
 opts = struct();
 opts.epoch_sec = 0.500;
 opts.hop_sec = 0.250;
-opts.bpf = "B1";
-opts.notch = "N9";
+opts.bpf = "B8";
+opts.notch = "N6";
 opts.lead = "ch1";
 opts.label_algorithm = "kurtosis";
 opts.kurtosis_thresh = 5.0;
@@ -236,9 +236,9 @@ if bpf == "none"
     id = 0;
     return;
 end
-tok = regexp(char(bpf), '^B([1-7])$', 'tokens', 'once');
+tok = regexp(char(bpf), '^B([1-8])$', 'tokens', 'once');
 if isempty(tok)
-    error('bpf must be none or B1..B7.');
+    error('bpf must be none or B1..B8.');
 end
 id = str2double(tok{1});
 end
@@ -469,11 +469,10 @@ end
 rec.ecg_mV = ecg_mV;
 rec.format = fmt;
 rec.imu = parse_imu_columns(data, imuStartCol);
-rec.motionBaseline = estimate_motion_baseline(rec.imu, rec.Fs);
 end
 
 function [ecg_mV, fmt, imuStartCol] = select_ecg_signal(data, lead)
-ADS_SCALE_MV = 1400.0 / 8388607.0;
+ADS_SCALE_MV = (2.0 * 2400.0 / 3.5) / hex2dec('C35000');
 nCols = size(data, 2);
 if nCols == 21
     ch1 = data(:,2) * ADS_SCALE_MV;
@@ -524,6 +523,16 @@ end
 fclose(fid);
 data = readmatrix(fpath, 'FileType', 'text', 'NumHeaderLines', headerLines);
 data = double(data);
+% A few malformed rows with a different column count force readmatrix to
+% NaN-pad all other rows. Trim to the modal column count first so those
+% padding NaNs don't discard valid data.
+col_counts = sum(~isnan(data), 2);
+if ~isempty(col_counts)
+    modal_cols = mode(col_counts);
+    if modal_cols < size(data, 2)
+        data = data(:, 1:modal_cols);
+    end
+end
 data = data(all(isfinite(data), 2), :);
 for cc = 2:size(data, 2)
     wrapped = data(:,cc) > 2147483647;
@@ -606,7 +615,7 @@ if bpf_id == 0 || ~isfinite(Fs) || Fs <= 0
     return;
 end
 Ny = Fs / 2;
-passbands = {[0.5 40], [0.5 40], [0.05 150], [0.5 40], [0.5 40], [0.05 40], [0.75 40]};
+passbands = {[0.5 40], [0.5 40], [0.05 150], [0.5 40], [0.5 40], [0.05 40], [0.75 40], [0.5 40]};
 pb = passbands{bpf_id};
 pb(1) = max(pb(1), 0.01);
 pb(2) = min(pb(2), 0.95 * Ny);
@@ -627,6 +636,8 @@ switch bpf_id
         [z,p,k] = ellip(2, 0.5, 40, Wn, 'bandpass');
     case {6,7}
         [z,p,k] = butter(4, Wn, 'bandpass');
+    case 8
+        [z,p,k] = butter(6, Wn, 'bandpass');
 end
 sos = zp2sos(z, p, k);
 end

@@ -1,17 +1,16 @@
 function show_fvtool_notch(indices, NOTCH)
-% SHOW_FVTOOL_NOTCH  Launch fvtool for IIR notch filters N1 and/or N2.
+% SHOW_FVTOOL_NOTCH  Launch fvtool for the IIR notch filter N1.
 %
 %   show_fvtool_notch(indices, NOTCH)
 %
-%   Only N1 and N2 have SOS matrices suitable for fvtool.
-%   N3-N8 are adaptive and have no fixed frequency response to display.
+%   Only N1 has an SOS matrix suitable for fvtool.
+%   N2-N6 are adaptive or FFT-based and have no fixed frequency response.
 %
 %   INPUTS:
-%     indices : 1 or 2, or [1 2] for both overlaid
+%     indices : 1 (only N1 is valid)
 %     NOTCH   : the NOTCH struct array from phase2_coefficients.m
 %
 %   EXAMPLES:
-%     show_fvtool_notch(1:2, NOTCH)   % N1 vs N2 overlaid
 %     show_fvtool_notch(1, NOTCH)     % N1 only
 
 if nargin < 2
@@ -22,7 +21,7 @@ end
 
 valid = indices(indices <= 2);
 if isempty(valid)
-    warning('Only N1 and N2 have SOS for fvtool. N3-N8 are adaptive.');
+    warning('Only N1 has SOS for fvtool. N2-N6 are adaptive or FFT-based.');
     return;
 end
 

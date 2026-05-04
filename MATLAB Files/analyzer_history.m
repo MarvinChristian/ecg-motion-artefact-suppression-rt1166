@@ -59,13 +59,13 @@ function phase3_analyzer()
 BPF = build_bpf_struct();
 NOTCH_NAMES = {
     'N1: IIR ×6  r=0.990',
-    'N3: NLMS  μ=0.005',
-    'N5: Hybrid IIR+NLMS',
-    'N6: RLS  λ=0.990',
-    'N8: Hybrid IIR+RLS',
-    'N9: Auto-detect multi-freq'
+    'N2: NLMS  μ=0.005',
+    'N3: Hybrid IIR+NLMS',
+    'N4: RLS  λ=0.990',
+    'N5: Hybrid IIR+RLS',
+    'N6: Auto-detect multi-freq'
 };
-NOTCH_TYPES = {'N1','N3','N5','N6','N8','N9'};
+NOTCH_TYPES = {'N1','N2','N3','N4','N5','N6'};
 
 MAS_NAMES = {
     'None (skip MAS)',
@@ -174,7 +174,7 @@ sidebar = uipanel(fig, ...
     'BackgroundColor',[0.18 0.18 0.21], ...
     'BorderType','none');
 
-uilabel(sidebar, 'Text','ECG Filter + MAS Analyser  (B1-B7 | N1,N3,N5,N6,N8,N9 | M1-M6)',...
+uilabel(sidebar, 'Text','ECG Filter + MAS Analyser  (B1-B8 | N1-N6 | M1-M6)',...
     'Position',[10 924 320 22], ...
     'FontSize',13, 'FontWeight','bold', 'FontColor',[0.9 0.9 0.9], ...
     'HorizontalAlignment','center');
@@ -1169,7 +1169,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         if strcmp(notch_type, 'N1')
             sos_n   = build_notch_at_fs(notch_idx, Fs);
             H_notch = sos_freq_response(sos_n, NFFT);
-        elseif notch_idx > 0 && ~strcmp(notch_type, 'N9')
+        elseif notch_idx > 0 && ~strcmp(notch_type, 'N6')
             H_notch = adaptive_freq_response(notch_type, Fs, NFFT);
         end
 
@@ -1181,9 +1181,9 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         [P_mas_in, ~   ] = safe_pwelch(mas_input,     Fs, NFFT);
         [P_mas_out,~   ] = safe_pwelch(mas_direct_out, Fs, NFFT);
 
-        % ── N9 empirical response ─────────────────────────────────────
+        % ── N6 empirical response ─────────────────────────────────────
         detected_freqs = [];
-        if strcmp(notch_type, 'N9')
+        if strcmp(notch_type, 'N6')
             max_pow2 = 2^floor(log2(max(N,1)));
             nfft_lo  = min(max_pow2, 2^nextpow2(round(Fs/0.005))); nfft_lo = max(nfft_lo,64);
             freqs_z1 = auto_detect_interference(sig_in,Fs,0.01,min(0.4,Fs/2-1),6,3,nfft_lo);
@@ -1440,7 +1440,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
         total_inject_amp = 0.06 * max(robust_peak, 1e-3);
         t_inj = (0:N-1)' / Fs;
         rng('shuffle');
-        if strcmp(notch_type, 'N9')
+        if strcmp(notch_type, 'N6')
             inj_freqs  = generate_n9_injection_freqs(Fs, state.inject_n_tones);
         elseif strcmp(notch_type, 'N10')
             inj_freqs  = generate_n10_injection_freqs(Fs, state.inject_n_tones);
@@ -2531,7 +2531,7 @@ mas_txt = uitextarea(tab_mas,'Position',[10 10 1350 310], ...
 %% ═══════════════════════════════════════════════════════════════════════
 
     function H = adaptive_freq_response(notch_type, Fs_design, Nfft)
-        if strcmp(notch_type,'N9')
+        if strcmp(notch_type,'N6')
             H = ones(Nfft/2+1,1);
             return;
         end

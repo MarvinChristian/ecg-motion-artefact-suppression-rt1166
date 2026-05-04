@@ -15,6 +15,8 @@ function T = evaluate_realtime_thresholds(bpf_id, notch_id)
 %           4  = B4 Chebyshev II 6th 0.5–40 Hz
 %           5  = B5 Elliptic 4th     0.5–40 Hz
 %           6  = B6 Butterworth 8th  0.05–40 Hz
+%           7  = B7 Butterworth 8th  0.75–40 Hz
+%           8  = B8 Butterworth 12th 0.5–40 Hz
 %
 % notch_id: 0  = none
 %           1  = N1 IIR r=0.990 at 50 Hz (default)
@@ -36,7 +38,8 @@ if nargin < 2 || isempty(notch_id); notch_id = 1; end
 
 BPF_NAMES   = {'none', 'B1 Butter8 0.5-40Hz', 'B2 Butter4 0.5-40Hz', ...
                'B3 Butter8 0.05-150Hz', 'B4 ChebyII6 0.5-40Hz', ...
-               'B5 Elliptic4 0.5-40Hz', 'B6 Butter8 0.05-40Hz'};
+               'B5 Elliptic4 0.5-40Hz', 'B6 Butter8 0.05-40Hz', ...
+               'B7 Butter8 0.75-40Hz', 'B8 Butter12 0.5-40Hz'};
 NOTCH_NAMES = {'none', 'N1 IIR r=0.990 50Hz'};
 
 bpf_label   = BPF_NAMES{bpf_id + 1};
@@ -119,8 +122,8 @@ rec.Fs          = 1 / median(dt);
 if isempty(dt) || ~isfinite(rec.Fs) || rec.Fs <= 0
     rec.Fs = NaN;
 end
-rec.ecg_mV       = double(data(:,2)) * (1800 / 4096);
-rec.imu          = parse_imu_columns(data);
+[rec.ecg_mV, imuStartCol] = decode_ecg_columns(data);
+rec.imu          = parse_imu_columns(data, imuStartCol);
 rec.motionBaseline = estimate_motion_baseline(rec.imu, rec.Fs);
 end
 
@@ -155,12 +158,30 @@ for cc = 2:size(data, 2)
 end
 end
 
-function imu = parse_imu_columns(data)
+function [ecg_mV, imuStartCol] = decode_ecg_columns(data)
+nCols = size(data, 2);
+ADS_SCALE_MV = (2 * 2400 / 3.5) / hex2dec('C35000');
+if nCols == 21
+    ecg_mV = double(data(:,2)) * ADS_SCALE_MV;
+    imuStartCol = 4;
+elseif nCols == 23
+    ecg_mV = double(data(:,21)) * ADS_SCALE_MV;
+    imuStartCol = 3;
+else
+    ecg_mV = double(data(:,2)) * (1800 / 4096);
+    imuStartCol = 3;
+end
+end
+
+function imu = parse_imu_columns(data, imuStartCol)
+if nargin < 2 || isempty(imuStartCol)
+    imuStartCol = 3;
+end
 N         = size(data, 1);
 raw       = nan(N, 18);
-available = max(0, min(18, size(data,2) - 2));
+available = max(0, min(18, size(data,2) - imuStartCol + 1));
 if available > 0
-    raw(:,1:available) = data(:,3:(2+available));
+    raw(:,1:available) = data(:,imuStartCol:(imuStartCol+available-1));
 end
 
 imu = struct();
@@ -239,6 +260,18 @@ switch bpf_id
         hi = hi_default;
         if lo >= hi; return; end
         [z, p, k] = butter(4, [lo hi], 'bandpass');
+
+    case 7  % B7: Butterworth 8th order, 0.75–40 Hz
+        lo = 0.75 / Nyq;
+        hi = hi_default;
+        if lo >= hi; return; end
+        [z, p, k] = butter(4, [lo hi], 'bandpass');
+
+    case 8  % B8: Butterworth 12th order, 0.5–40 Hz
+        lo = lo_default;
+        hi = hi_default;
+        if lo >= hi; return; end
+        [z, p, k] = butter(6, [lo hi], 'bandpass');
 
     otherwise
         return;

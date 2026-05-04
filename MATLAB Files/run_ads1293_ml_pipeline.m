@@ -3,13 +3,13 @@ function result = run_ads1293_ml_pipeline(varargin)
 %
 % Example:
 %   result = run_ads1293_ml_pipeline( ...
-%       'lead','ch1', 'bpf','B7', 'notch','N9', ...
+%       'lead','ch1', 'bpf','B8', 'notch','N6', ...
 %       'label_algorithm','hybrid', 'train',true);
 
 p = inputParser;
 addParameter(p, 'lead', 'ch1');
-addParameter(p, 'bpf', 'B7');
-addParameter(p, 'notch', 'N9');
+addParameter(p, 'bpf', 'B8');
+addParameter(p, 'notch', 'N6');
 addParameter(p, 'label_algorithm', 'kurtosis');
 addParameter(p, 'epoch_sec', 0.500);
 addParameter(p, 'hop_sec', 0.250);
