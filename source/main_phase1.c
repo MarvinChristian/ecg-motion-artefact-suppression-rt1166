@@ -154,6 +154,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <stddef.h>
 
 #include "fsl_common.h"
 #include "fsl_debug_console.h"
@@ -194,8 +195,8 @@
 
    PHASE1_ADS1293_IMU  -  ADS1293 Lead I/II signed 24-bit codes + 3x raw IMU
                           Default for the current ADS1293-based build.
-                          ADS1293 is polled at SPS_128; timestamps define the
-                          actual sample times for offline analysis.
+                          ADS1293 DATA_STATUS readiness anchors each ECG row;
+                          timestamped IMU samples are matched by nearest time.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 #define PHASE1_ECG_ONLY   (1)
@@ -205,6 +206,9 @@
 
 #define PHASE1_MODE       PHASE1_ADS1293_IMU    /* change here and rebuild */
 #define PHASE1_ADS1293_FRONTEND ADS1293_FRONTEND_5_LEAD
+#define PHASE1_ADS1293_READY_MASK (0x06U)
+#define PHASE1_ADS1293_READY_DEBUG (1U)
+#define PHASE1_ADS1293_READY_DEBUG_PERIOD_US (1000000U)
 
 #define PHASE1_USES_AD8233 \
     ((PHASE1_MODE == PHASE1_ECG_ONLY) || (PHASE1_MODE == PHASE1_ECG_IMU))
@@ -237,6 +241,78 @@
    approach when the inter-sample interval is not guaranteed to be uniform.
    ═══════════════════════════════════════════════════════════════════════════ */
 #define PHASE1_DECIM   (1U)
+
+#if (PHASE1_MODE == PHASE1_ADS1293_IMU)
+#define PHASE1_IMU_MATCH_RING_LEN (16U)
+
+typedef struct
+{
+    uint32_t  t_us;
+    imu_raw_t raw[IMU_COUNT];
+    bool      valid;
+} phase1_imu_match_sample_t;
+
+static uint32_t phase1_abs_time_delta_us(uint32_t a_us, uint32_t b_us)
+{
+    int32_t delta = (int32_t)(a_us - b_us);
+    return (delta < 0) ? (0U - (uint32_t)delta) : (uint32_t)delta;
+}
+
+static void phase1_push_imu_match_sample(phase1_imu_match_sample_t ring[PHASE1_IMU_MATCH_RING_LEN],
+                                         uint32_t *write_idx,
+                                         bool *has_sample)
+{
+    if ((ring == NULL) || (write_idx == NULL) || (has_sample == NULL))
+    {
+        return;
+    }
+
+    phase1_imu_match_sample_t *slot = &ring[*write_idx];
+    const uint32_t t0_us = (uint32_t)Timebase_NowUs();
+    IMU_ReadAllRaw(slot->raw);
+    const uint32_t t1_us = (uint32_t)Timebase_NowUs();
+
+    /* Current IMU API reads all three sites as one block; use the midpoint
+       as the block timestamp. Three dt columns keep the CSV contract ready
+       for future per-site timestamping without another format change. */
+    slot->t_us = t0_us + ((uint32_t)(t1_us - t0_us) / 2U);
+    slot->valid = true;
+
+    *write_idx = (*write_idx + 1U) % PHASE1_IMU_MATCH_RING_LEN;
+    *has_sample = true;
+}
+
+static const phase1_imu_match_sample_t *phase1_find_nearest_imu_sample(
+    const phase1_imu_match_sample_t ring[PHASE1_IMU_MATCH_RING_LEN],
+    bool has_sample,
+    uint32_t t_ecg_us)
+{
+    if ((ring == NULL) || !has_sample)
+    {
+        return NULL;
+    }
+
+    const phase1_imu_match_sample_t *best = NULL;
+    uint32_t best_delta = UINT32_MAX;
+
+    for (uint32_t ii = 0U; ii < PHASE1_IMU_MATCH_RING_LEN; ii++)
+    {
+        if (!ring[ii].valid)
+        {
+            continue;
+        }
+
+        uint32_t delta = phase1_abs_time_delta_us(ring[ii].t_us, t_ecg_us);
+        if ((best == NULL) || (delta < best_delta))
+        {
+            best = &ring[ii];
+            best_delta = delta;
+        }
+    }
+
+    return best;
+}
+#endif
 
 /* ═══════════════════════════════════════════════════════════════════════════
    HELPER: FLOAT → INT16 WITH ROUND-HALF-AWAY-FROM-ZERO
@@ -444,10 +520,11 @@ int main(void)
     PRINTF("[PHASE1]  Rate      : ADS1293 SPS_128; verify from t_us timestamps\r\n");
 #elif (PHASE1_MODE == PHASE1_ADS1293_IMU)
     PRINTF("[PHASE1]  Mode      : ADS1293_IMU\r\n");
-    PRINTF("[PHASE1]  Fields    : t_us, ads_ch1, ads_ch2, 3xIMU = 21\r\n");
+    PRINTF("[PHASE1]  Fields    : t_us, ads_ch1, ads_ch2, 3xIMU, dt_us = 24\r\n");
     PRINTF("[PHASE1]  ECG data  : ADS1293 signed 24-bit Lead I and Lead II codes\r\n");
-    PRINTF("[PHASE1]  Rate      : ADS1293 SPS_128; verify from t_us timestamps\r\n");
+    PRINTF("[PHASE1]  Rate      : ADS1293-ready anchored; verify from t_us timestamps\r\n");
     PRINTF("[PHASE1]  IMU data  : RAW int16 register values (Kalman bypassed)\r\n");
+    PRINTF("[PHASE1]  IMU match : nearest timestamped IMU block; dt*_us = IMU - ECG\r\n");
     PRINTF("[PHASE1]  IMU sites : IMU0=LL  IMU1=LA  IMU2=RA\r\n");
 #endif
 
@@ -484,7 +561,8 @@ int main(void)
     PRINTF("t_us,ads_ch1,ads_ch2,"
            "ax0,ay0,az0,gx0,gy0,gz0,"
            "ax1,ay1,az1,gx1,gy1,gz1,"
-           "ax2,ay2,az2,gx2,gy2,gz2\r\n");
+           "ax2,ay2,az2,gx2,gy2,gz2,"
+           "dt0_us,dt1_us,dt2_us\r\n");
 #endif
 
     /* ── Main acquisition loop ───────────────────────────────────────────── */
@@ -528,7 +606,19 @@ int main(void)
     uint32_t next_tick = DWT->CYCCNT + step;
     uint32_t seq       = 0U;
 
-#if PHASE1_USES_IMU
+#if PHASE1_USES_ADS1293 && PHASE1_ADS1293_READY_DEBUG
+    uint32_t ads_debug_last_us = 0U;
+    uint32_t ads_status_fail_count = 0U;
+    uint32_t ads_not_ready_count = 0U;
+    uint32_t ads_read_fail_count = 0U;
+#endif
+
+#if (PHASE1_MODE == PHASE1_ADS1293_IMU)
+    phase1_imu_match_sample_t imu_ring[PHASE1_IMU_MATCH_RING_LEN];
+    memset(imu_ring, 0, sizeof(imu_ring));
+    uint32_t imu_ring_write = 0U;
+    bool imu_ring_has_sample = false;
+#elif PHASE1_USES_IMU
     imu_raw_t imu_raw[IMU_COUNT];
     memset(imu_raw, 0, sizeof(imu_raw));
 #endif
@@ -538,11 +628,54 @@ int main(void)
         wait_until_cycle(next_tick);
         next_tick += step;
 
+#if (PHASE1_MODE == PHASE1_ADS1293_IMU)
+        phase1_push_imu_match_sample(imu_ring, &imu_ring_write, &imu_ring_has_sample);
+#endif
+
 #if PHASE1_USES_ADS1293
-        bool ads_ready = false;
-        if ((ADS1293_IsDataReady(&g_ads1293, &ads_ready) != kStatus_Success) ||
-            !ads_ready)
+        uint8_t ads_status = 0U;
+        status_t ads_status_st = ADS1293_ReadDataStatus(&g_ads1293, &ads_status);
+        bool ads_ready = (ads_status_st == kStatus_Success) &&
+                         ((ads_status & PHASE1_ADS1293_READY_MASK) ==
+                          PHASE1_ADS1293_READY_MASK);
+        if (!ads_ready)
         {
+#if PHASE1_ADS1293_READY_DEBUG
+            const uint32_t now_us = (uint32_t)Timebase_NowUs();
+            if (ads_status_st != kStatus_Success)
+            {
+                ads_status_fail_count++;
+            }
+            else
+            {
+                ads_not_ready_count++;
+            }
+            if ((ads_debug_last_us == 0U) ||
+                ((uint32_t)(now_us - ads_debug_last_us) >= PHASE1_ADS1293_READY_DEBUG_PERIOD_US))
+            {
+                ads_debug_last_us = now_us;
+                PRINTF("[ADS1293_DEBUG] t_us=%u DATA_STATUS=0x%02X "
+                       "st=%d ready=%u mask=0x%02X "
+                       "b0=%u b1=%u b2=%u b3=%u b4=%u b5=%u b6=%u b7=%u "
+                       "status_fail=%u not_ready=%u read_fail=%u\r\n",
+                       (unsigned)now_us,
+                       (unsigned)ads_status,
+                       (int)ads_status_st,
+                       ads_ready ? 1U : 0U,
+                       (unsigned)PHASE1_ADS1293_READY_MASK,
+                       (unsigned)((ads_status >> 0U) & 0x01U),
+                       (unsigned)((ads_status >> 1U) & 0x01U),
+                       (unsigned)((ads_status >> 2U) & 0x01U),
+                       (unsigned)((ads_status >> 3U) & 0x01U),
+                       (unsigned)((ads_status >> 4U) & 0x01U),
+                       (unsigned)((ads_status >> 5U) & 0x01U),
+                       (unsigned)((ads_status >> 6U) & 0x01U),
+                       (unsigned)((ads_status >> 7U) & 0x01U),
+                       (unsigned)ads_status_fail_count,
+                       (unsigned)ads_not_ready_count,
+                       (unsigned)ads_read_fail_count);
+            }
+#endif
             catch_up_next_tick(&next_tick, step);
             continue;
         }
@@ -552,13 +685,12 @@ int main(void)
         ads1293_samples_t ads_sample;
         if (ADS1293_ReadECGData(&g_ads1293, &ads_sample) != kStatus_Success)
         {
+#if PHASE1_ADS1293_READY_DEBUG
+            ads_read_fail_count++;
+#endif
             catch_up_next_tick(&next_tick, step);
             continue;
         }
-
-#if PHASE1_USES_IMU
-        IMU_ReadAllRaw(imu_raw);
-#endif
 
         if ((seq % PHASE1_DECIM) == 0U)
         {
@@ -568,22 +700,32 @@ int main(void)
                    (int)ads_sample.ch1,
                    (int)ads_sample.ch2);
 #else
+            const phase1_imu_match_sample_t *imu_match =
+                phase1_find_nearest_imu_sample(imu_ring, imu_ring_has_sample, t_us);
+            imu_raw_t imu_zero[IMU_COUNT];
+            memset(imu_zero, 0, sizeof(imu_zero));
+            const imu_raw_t *imu_out = (imu_match != NULL) ? imu_match->raw : imu_zero;
+            const int32_t imu_dt_us = (imu_match != NULL) ?
+                (int32_t)(imu_match->t_us - t_us) : 0;
+
             PRINTF("%u,%d,%d,"
                    "%d,%d,%d,%d,%d,%d,"
                    "%d,%d,%d,%d,%d,%d,"
-                   "%d,%d,%d,%d,%d,%d\r\n",
+                   "%d,%d,%d,%d,%d,%d,"
+                   "%d,%d,%d\r\n",
                    (unsigned)t_us,
                    (int)ads_sample.ch1,
                    (int)ads_sample.ch2,
                    /* IMU0 - LL */
-                   (int)imu_raw[0].ax, (int)imu_raw[0].ay, (int)imu_raw[0].az,
-                   (int)imu_raw[0].gx, (int)imu_raw[0].gy, (int)imu_raw[0].gz,
+                   (int)imu_out[0].ax, (int)imu_out[0].ay, (int)imu_out[0].az,
+                   (int)imu_out[0].gx, (int)imu_out[0].gy, (int)imu_out[0].gz,
                    /* IMU1 - LA */
-                   (int)imu_raw[1].ax, (int)imu_raw[1].ay, (int)imu_raw[1].az,
-                   (int)imu_raw[1].gx, (int)imu_raw[1].gy, (int)imu_raw[1].gz,
+                   (int)imu_out[1].ax, (int)imu_out[1].ay, (int)imu_out[1].az,
+                   (int)imu_out[1].gx, (int)imu_out[1].gy, (int)imu_out[1].gz,
                    /* IMU2 - RA */
-                   (int)imu_raw[2].ax, (int)imu_raw[2].ay, (int)imu_raw[2].az,
-                   (int)imu_raw[2].gx, (int)imu_raw[2].gy, (int)imu_raw[2].gz);
+                   (int)imu_out[2].ax, (int)imu_out[2].ay, (int)imu_out[2].az,
+                   (int)imu_out[2].gx, (int)imu_out[2].gy, (int)imu_out[2].gz,
+                   (int)imu_dt_us, (int)imu_dt_us, (int)imu_dt_us);
 #endif
         }
 

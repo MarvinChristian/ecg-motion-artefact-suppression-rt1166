@@ -41,6 +41,7 @@
 #define ADS1293_REG_DATA_STATUS  (0x30U)
 #define ADS1293_REG_DATA_CH1_ECG (0x37U)
 #define ADS1293_REG_REVID        (0x40U)
+#define ADS1293_DATA_READY_CH1_CH2_MASK (0x06U)
 
 /* Protocentral/default ECG configuration values. */
 #define ADS1293_FLEX_CH1_LEAD_I      (0x11U) /* LA - RA */
@@ -265,6 +266,11 @@ status_t ADS1293_ReadRevision(ads1293_t *dev, uint8_t *revid)
     return ADS1293_ReadReg(dev, ADS1293_REG_REVID, revid);
 }
 
+status_t ADS1293_ReadDataStatus(ads1293_t *dev, uint8_t *status)
+{
+    return ADS1293_ReadReg(dev, ADS1293_REG_DATA_STATUS, status);
+}
+
 status_t ADS1293_IsDataReady(ads1293_t *dev, bool *ready)
 {
     if (ready == NULL)
@@ -273,16 +279,17 @@ status_t ADS1293_IsDataReady(ads1293_t *dev, bool *ready)
     }
 
     uint8_t status = 0U;
-    status_t st = ADS1293_ReadReg(dev, ADS1293_REG_DATA_STATUS, &status);
+    status_t st = ADS1293_ReadDataStatus(dev, &status);
     if (st != kStatus_Success)
     {
         *ready = false;
         return st;
     }
 
-    /* The current stream records Lead I and Lead II, so wait until both
-       channel data-ready bits are set before reading the burst. */
-    *ready = ((status & 0x03U) == 0x03U);
+    /* The current stream records Lead I and Lead II. On this ADS1293 status
+       byte, the observed channel-ready bits are bit1=CH1 and bit2=CH2. */
+    *ready = ((status & ADS1293_DATA_READY_CH1_CH2_MASK) ==
+              ADS1293_DATA_READY_CH1_CH2_MASK);
     return kStatus_Success;
 }
 

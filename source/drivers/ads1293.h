@@ -55,6 +55,7 @@ status_t ADS1293_Configure(ads1293_t *dev, ads1293_frontend_t frontend);
 status_t ADS1293_WriteReg(ads1293_t *dev, uint8_t reg, uint8_t val);
 status_t ADS1293_ReadReg(ads1293_t *dev, uint8_t reg, uint8_t *val);
 status_t ADS1293_ReadRevision(ads1293_t *dev, uint8_t *revid);
+status_t ADS1293_ReadDataStatus(ads1293_t *dev, uint8_t *status);
 status_t ADS1293_IsDataReady(ads1293_t *dev, bool *ready);
 status_t ADS1293_ReadECGData(ads1293_t *dev, ads1293_samples_t *samples);
 
