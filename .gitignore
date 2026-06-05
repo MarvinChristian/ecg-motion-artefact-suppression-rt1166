@@ -3,6 +3,12 @@
 # =========================
 Debug/
 Release/
+Debug_CM4/*.axf
+Debug_CM4/*.bin
+Debug_CM4/*.map
+Debug_CM4/*.o
+Debug_CM4/*.d
+Debug_CM4/*.su
 
 # =========================
 # Eclipse / MCUXpresso junk
@@ -45,16 +51,52 @@ Thumbs.db
 # Raw experiment data can get huge
 Recordings/
 Python Files/Recordings/
+Python Files/ADS1293_IMU_TS_Recordings/
+Python Files/Phase4_Monitor_Recordings/
 **/recordings/
 **/Recordings/
 **/session_raw_*.txt
 MATLAB\ Files/20*/
+MATLAB Files/
+Python Files/
+thesis_pipeline/
+docs/
+
+# Curated support package: keep only the final R01-R10 recording set.
+!Support_Tools/
+!Support_Tools/Recordings/
+!Support_Tools/Recordings/R01_R10_ADS1293_IMU_TS/
+!Support_Tools/Recordings/R01_R10_ADS1293_IMU_TS/**
 
 # Optional: if MATLAB saves .mat outputs
 MATLAB\ Files/*.mat
 MATLAB\ Files/outputs/
+MATLAB Files/**/*.mat
+MATLAB Files/**/outputs/
 thesis_pipeline/outputs/
 analysis/
+
+# Local report-building working files. Publish only final artifacts.
+Results/
+Results/*.m
+Results/*.py
+Results/**/*.m
+Results/**/*.py
+Results/README.md
+Results/FIGURE_MANIFEST.md
+Support_Tools/Final_Pipeline_Files/MATLAB/outputs/final/mas_epoch_features.mat
+Support_Tools/Final_Pipeline_Files/MATLAB/outputs/final/revised_mas_labels.mat
+
+# Report build/citation working area.
+Thesis_Report/
+endnote_lookup_working/
+endnote_ris_links_table.md
+Python Files/capture_*_shot.py
+Python Files/ecg_ra_ll_sanity_gui.py
+Python Files/ecg_seminar_overlay.py
+Python Files/imu_playback_gui.py
+scripts/generate_thesis_*.py
+scripts/export_source_code.py
 
 # =========================
 # Optional: ignore generated CSV logs
@@ -62,6 +104,7 @@ analysis/
 *.csv
 !MATLAB\ Files/config/*.csv
 **/*recording_manifest*.csv
+!Support_Tools/Recordings/R01_R10_ADS1293_IMU_TS/*recording_manifest*.csv
 
 # =========================
 # Generated source dumps

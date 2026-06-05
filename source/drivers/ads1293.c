@@ -7,7 +7,9 @@
  * Arduino library:
  *   - SPI mode 0, MSB first, 1 MHz
  *   - 24-bit ECG samples read from DATA_CH1_ECG..DATA_CH3_ECG
- *   - SPS_128 uses R2=5 and R3=16 decimation codes
+ *   - Active ECG stream targets 200 sps / 40-Hz bandwidth using R2=4, R3=32.
+ *     Firmware still treats DATA_STATUS readiness and t_us as the source of
+ *     truth for the measured UART sample rate.
  */
 
 #include "drivers/ads1293.h"
@@ -51,8 +53,8 @@
 #define ADS1293_RLD_DEFAULT          (0x04U)
 #define ADS1293_OSC_DEFAULT          (0x04U)
 #define ADS1293_AFE_ALL_ENABLED      (0x00U)
-#define ADS1293_R2_RATE_5            (0x02U)
-#define ADS1293_R3_RATE_16           (0x10U)
+#define ADS1293_R2_RATE_4            (0x01U)
+#define ADS1293_R3_RATE_32           (0x20U)
 #define ADS1293_DRDY_DEFAULT         (0x08U)
 #define ADS1293_CH_CFG_3_LEAD        (0x30U)
 #define ADS1293_CH_CFG_5_LEAD        (0x70U)
@@ -209,14 +211,14 @@ status_t ADS1293_Configure(ads1293_t *dev, ads1293_frontend_t frontend)
                                ADS1293_AFE_ALL_ENABLED);
     if (st != kStatus_Success) { return st; }
 
-    st = ads1293_write_checked(dev, ADS1293_REG_R2_RATE, ADS1293_R2_RATE_5);
+    st = ads1293_write_checked(dev, ADS1293_REG_R2_RATE, ADS1293_R2_RATE_4);
     if (st != kStatus_Success) { return st; }
 
-    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH1, ADS1293_R3_RATE_16);
+    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH1, ADS1293_R3_RATE_32);
     if (st != kStatus_Success) { return st; }
-    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH2, ADS1293_R3_RATE_16);
+    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH2, ADS1293_R3_RATE_32);
     if (st != kStatus_Success) { return st; }
-    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH3, ADS1293_R3_RATE_16);
+    st = ads1293_write_checked(dev, ADS1293_REG_R3_RATE_CH3, ADS1293_R3_RATE_32);
     if (st != kStatus_Success) { return st; }
 
     st = ads1293_write_checked(dev, ADS1293_REG_DRDYB_SRC, ADS1293_DRDY_DEFAULT);

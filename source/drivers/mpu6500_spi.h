@@ -11,12 +11,12 @@
  *      selected by a separate LPSPI PCS channel (PCS0, PCS1, PCS2).
  *
  *      Physical wiring (Arduino header):
- *        J10 pin 4 (D11) — MOSI
- *        J10 pin 5 (D12) — MISO
- *        J10 pin 6 (D13) — SCLK
- *        J10[6] — CS0 → IMU 0 (LPSPI1 PCS0)
- *        J9[5]  — CS1 → IMU 1 (LPSPI1 PCS1)
- *        J9[1]  — CS2 → IMU 2 (LPSPI1 PCS2)
+ *        J10 pin 4 (D11) - MOSI
+ *        J10 pin 5 (D12) - MISO
+ *        J10 pin 6 (D13) - SCLK
+ *        J10[6] - CS0 -> IMU 0 (LPSPI1 PCS0)
+ *        J9[5]  - CS1 -> IMU 1 (LPSPI1 PCS1)
+ *        J9[1]  - CS2 -> IMU 2 (LPSPI1 PCS2)
  *
  *      The three CS pins must be configured as LPSPI1 PCS0/PCS1/PCS2
  *      in pin_mux.c for this to work.
@@ -41,10 +41,10 @@
 #include "fsl_common.h"
 #include "fsl_lpspi.h"
 
-/* ── SPI protocol ────────────────────────────────────────────────────────── */
+/* SPI protocol. */
 #define MPU6500_SPI_READ_BIT        (0x80U)
 
-/* ── Register addresses ─────────────────────────────────────────────────── */
+/* Register addresses. */
 #define MPU6500_REG_SMPLRT_DIV      (0x19U)
 #define MPU6500_REG_CONFIG          (0x1AU)
 #define MPU6500_REG_GYRO_CONFIG     (0x1BU)
@@ -56,23 +56,23 @@
 #define MPU6500_REG_PWR_MGMT_2      (0x6CU)
 #define MPU6500_REG_WHO_AM_I        (0x75U)
 
-/* ── WHO_AM_I value ─────────────────────────────────────────────────────── */
+/* WHO_AM_I value. */
 #define MPU_WHO_AM_I_MPU6500        (0x70U)
 
-/* ── USER_CTRL bit masks ────────────────────────────────────────────────── */
+/* USER_CTRL bit masks. */
 #define MPU6500_USER_CTRL_I2C_IF_DIS_MASK  (0x10U)
 
-/* ── Chunk size for burst reads ─────────────────────────────────────────── */
+/* Chunk size for burst reads. */
 #define MPU6500_MAX_CHUNK           (64U)
 
-/* ── SPI mode ───────────────────────────────────────────────────────────── */
+/* SPI mode. */
 typedef enum
 {
     MPU6500_SPI_MODE0 = 0,
     MPU6500_SPI_MODE3 = 3
 } mpu6500_spi_mode_t;
 
-/* ── Device handle ──────────────────────────────────────────────────────── */
+/* Device handle. */
 typedef struct
 {
     LPSPI_Type          *base;          /* LPSPI peripheral (LPSPI1)        */
@@ -83,7 +83,7 @@ typedef struct
     mpu6500_spi_mode_t   mode;          /* MPU6500_SPI_MODE3                */
 } mpu6500_t;
 
-/* ── Public API ─────────────────────────────────────────────────────────── */
+/* Public API. */
 
 /*
  * Initialise LPSPI in master mode and configure the device handle.

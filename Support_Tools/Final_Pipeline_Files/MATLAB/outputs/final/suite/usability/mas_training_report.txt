@@ -1,0 +1,84 @@
+Current MAS ML Training Report
+==============================
+
+Labels: Support_Tools\Final_Pipeline_Files\MATLAB\outputs\final\suite\usability\revised_mas_usability_labels.mat
+Policy: combo 1 fixed BPF+Notch; combo 5 lead-matched BPF+Notch+NLMS (CH1 RA+LA, CH2 RA+LL); corrupted rejects both.
+Requested model: auto_full
+Validation: leave_one_recording_out_cv_on_train_split
+Selection metric: balanced_accuracy
+Active combo ids: 1
+
+Train/test split summary:
+  ch1 unspecified: recordings=12 rows=3689 usable=3364 rejected=325
+  ch2 unspecified: recordings=12 rows=3689 usable=3556 rejected=133
+
+Pooled model (single ch1+ch2 scorer; lead_id is feature [0]):
+  Model: RUSBoost trees (rusboost)
+  LORO-CV (primary, across-recording): balanced 80.1%, usable 90.5%, reject 69.7% (rows=7378 usable=6920 rejected=458)
+  Overlap guard: ON (boundary train epochs overlapping the test region were dropped).
+  ch1.h and ch2.h export the same pooled forest; lead-specific behaviour is via the lead_id feature.
+
+Selected lead models:
+  ch1: RUSBoost trees (pooled ch1+ch2) (rusboost), balanced 77.4%, usable 84.3%, reject 70.5%, rows 3689
+  ch2: RUSBoost trees (pooled ch1+ch2) (rusboost), balanced 82.0%, usable 96.3%, reject 67.7%, rows 3689
+
+Recording-level performance:
+  ch1 loro_cv R01_resting_rec_1: n=238 balanced=50.0% usable=100.0% reject=0.0%
+  ch1 loro_cv R01_resting_rec_2: n=238 balanced=50.0% usable=100.0% reject=0.0%
+  ch1 loro_cv R02_standing: n=235 balanced=50.0% usable=100.0% reject=0.0%
+  ch1 loro_cv R03_breathing: n=236 balanced=50.0% usable=100.0% reject=0.0%
+  ch1 loro_cv R04_ra_movement: n=231 balanced=66.9% usable=69.2% reject=64.7%
+  ch1 loro_cv R05_la_movement: n=239 balanced=71.7% usable=72.0% reject=71.4%
+  ch1 loro_cv R06_lr_sway: n=221 balanced=46.6% usable=93.2% reject=0.0%
+  ch1 loro_cv R07_fb_swaying: n=226 balanced=45.3% usable=90.6% reject=0.0%
+  ch1 loro_cv R08_walking: n=214 balanced=64.3% usable=50.7% reject=77.8%
+  ch1 loro_cv R09_cable_movement: n=116 balanced=73.9% usable=71.2% reject=76.6%
+  ch1 loro_cv R10_bus_recording_1: n=746 balanced=72.8% usable=71.6% reject=74.1%
+  ch1 loro_cv R10_bus_recording_2: n=749 balanced=71.8% usable=88.1% reject=55.6%
+  ch2 loro_cv R01_resting_rec_1: n=238 balanced=50.0% usable=100.0% reject=0.0%
+  ch2 loro_cv R01_resting_rec_2: n=238 balanced=50.0% usable=100.0% reject=0.0%
+  ch2 loro_cv R02_standing: n=235 balanced=50.0% usable=100.0% reject=0.0%
+  ch2 loro_cv R03_breathing: n=236 balanced=49.4% usable=98.7% reject=0.0%
+  ch2 loro_cv R04_ra_movement: n=231 balanced=57.7% usable=99.5% reject=15.8%
+  ch2 loro_cv R05_la_movement: n=239 balanced=50.0% usable=100.0% reject=0.0%
+  ch2 loro_cv R06_lr_sway: n=221 balanced=49.5% usable=99.1% reject=0.0%
+  ch2 loro_cv R07_fb_swaying: n=226 balanced=50.0% usable=100.0% reject=0.0%
+  ch2 loro_cv R08_walking: n=214 balanced=68.8% usable=97.6% reject=40.0%
+  ch2 loro_cv R09_cable_movement: n=116 balanced=83.5% usable=85.7% reject=81.4%
+  ch2 loro_cv R10_bus_recording_1: n=746 balanced=67.5% usable=85.0% reject=50.0%
+  ch2 loro_cv R10_bus_recording_2: n=749 balanced=49.6% usable=99.2% reject=0.0%
+
+Per-condition performance:
+  loro_cv all resting: n=952 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv all standing: n=470 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv all breathing: n=472 balanced=49.7% usable=99.4% reject=0.0%
+  loro_cv all ra_movement: n=462 balanced=61.6% usable=84.3% reject=38.9%
+  loro_cv all la_movement: n=478 balanced=76.7% usable=86.8% reject=66.7%
+  loro_cv all lr_sway: n=442 balanced=48.1% usable=96.2% reject=0.0%
+  loro_cv all fb_swaying: n=452 balanced=47.7% usable=95.3% reject=0.0%
+  loro_cv all walking: n=428 balanced=69.3% usable=74.4% reject=64.3%
+  loro_cv all cable_movement: n=232 balanced=76.9% usable=74.2% reject=79.5%
+  loro_cv all bus: n=2990 balanced=78.2% usable=86.8% reject=69.6%
+  loro_cv ch1 resting: n=476 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch1 standing: n=235 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch1 breathing: n=236 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch1 ra_movement: n=231 balanced=66.9% usable=69.2% reject=64.7%
+  loro_cv ch1 la_movement: n=239 balanced=71.7% usable=72.0% reject=71.4%
+  loro_cv ch1 lr_sway: n=221 balanced=46.6% usable=93.2% reject=0.0%
+  loro_cv ch1 fb_swaying: n=226 balanced=45.3% usable=90.6% reject=0.0%
+  loro_cv ch1 walking: n=214 balanced=64.3% usable=50.7% reject=77.8%
+  loro_cv ch1 cable_movement: n=116 balanced=73.9% usable=71.2% reject=76.6%
+  loro_cv ch1 bus: n=1495 balanced=75.3% usable=80.6% reject=70.0%
+  loro_cv ch2 resting: n=476 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch2 standing: n=235 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch2 breathing: n=236 balanced=49.4% usable=98.7% reject=0.0%
+  loro_cv ch2 ra_movement: n=231 balanced=57.7% usable=99.5% reject=15.8%
+  loro_cv ch2 la_movement: n=239 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch2 lr_sway: n=221 balanced=49.5% usable=99.1% reject=0.0%
+  loro_cv ch2 fb_swaying: n=226 balanced=50.0% usable=100.0% reject=0.0%
+  loro_cv ch2 walking: n=214 balanced=68.8% usable=97.6% reject=40.0%
+  loro_cv ch2 cable_movement: n=116 balanced=83.5% usable=85.7% reject=81.4%
+  loro_cv ch2 bus: n=1495 balanced=71.1% usable=92.2% reject=50.0%
+
+Firmware note:
+  Bagged-tree selections are exportable by export_bag_to_c. Other model kinds are training comparisons until an exporter is added.

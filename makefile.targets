@@ -1,0 +1,21 @@
+################################################################################
+# Project helper targets included by the generated Debug/makefile.
+# MCUXpresso custom Build Targets run from Debug/, so paths here are relative to
+# Debug unless invoked through the root convenience makefile.
+################################################################################
+
+LINKSERVER := C:/nxp/MCUXpressoIDE_25.6.136/ide/LinkServer/LinkServer.exe
+PHASE4_DEVICE := MIMXRT1166:MIMXRT1160-EVK
+PHASE4_CM7_AXF := Motion_Artefact_Suppression_ECG_SystemP1_09_04_2026.axf
+PHASE4_CM4_AXF := ../Debug_CM4/Phase4_CM4_Classifier.axf
+
+.PHONY: Build_CM4_Classifier cm4 clean_cm4 Flash_Phase4_Dual
+
+Build_CM4_Classifier cm4:
+	+@$(MAKE) --no-print-directory -C ../Debug_CM4 all
+
+clean_cm4:
+	+@$(MAKE) --no-print-directory -C ../Debug_CM4 clean
+
+Flash_Phase4_Dual: main-build Build_CM4_Classifier
+	"$(LINKSERVER)" flash $(PHASE4_DEVICE) load "$(PHASE4_CM7_AXF)" "$(PHASE4_CM4_AXF)"

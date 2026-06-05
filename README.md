@@ -1,159 +1,111 @@
-# Real-Time ECG/IMU Processing on NXP MIMXRT1166
+# Motion Artefact Suppression ECG System
 
-Firmware, capture tools, and MATLAB analysis for a thesis project on
-real-time ECG acquisition, motion-aware feature extraction, and embedded
-latency/compute evaluation on the NXP MIMXRT1166.
+Embedded ECG and motion-sensing prototype for suppressing motion artefacts in
+real-time ECG monitoring.
 
-## Current Thesis Direction
+This repository contains the publishable project snapshot:
 
-The project is no longer framed as "prove that IMU waveform subtraction
-removes ECG motion artefact." The current thesis direction is:
+- NXP MIMXRT1166 firmware and MCUXpresso project files;
+- host-side support tools used to inspect recordings, label epochs, train the
+  compact classifiers, and monitor the deployed Phase 4 stream;
+- a curated R01-R10 ADS1293/IMU recording subset used by the included tools.
 
-1. acquire timestamped single-lead ECG and multi-site IMU data on the NXP
-   board;
-2. measure the true sample rate and data quality from recordings;
-3. replay ECG filtering and feature extraction causally from the recorded
-   stream;
-4. quantify why direct IMU-based waveform cancellation is coherence-limited
-   on the current hardware/data;
-5. use IMU and ECG quality features to classify motion-corrupted epochs;
-6. port the defensible real-time feature/classifier path back toward the NXP
-   board and benchmark latency, memory, and compute cost.
+The thesis report, figure-generation workspace, raw results workspace, and
+private MATLAB/Python scratch files are intentionally not part of this
+repository.
 
-The strongest final output is therefore a motion-aware ECG feature pipeline:
-R peaks, RR intervals, heart rate, short-window HRV estimates, signal-quality
-state, IMU motion state, and conservative alarm gating. Alarms should only be
-raised when the classifier/quality logic is confident that the epoch is usable.
+## System Overview
 
-## What Is Implemented
+The prototype combines ADS1293 ECG acquisition with three MPU-6500 inertial
+measurement units. The firmware streams timestamped ECG, IMU, signal-quality,
+heart-rate, and classifier fields over UART. The current Phase 4 path uses a
+two-stage embedded classifier:
 
-| Area | Status |
-| --- | --- |
-| NXP ECG/IMU acquisition firmware | Implemented in `source/` with board support at repo root |
-| Python serial monitor/recorder | Implemented in `Python Files/ecg_monitor.py` |
-| Offline filter and MAS exploration | Implemented in `MATLAB Files/` |
-| Clean thesis replay/feature pipeline | Implemented in `thesis_pipeline/` |
-| Epoch feature extraction and classifier training | Implemented in `thesis_pipeline/matlab/` |
-| Classifier export to C header | Implemented in `thesis_pipeline/matlab/export_tree_to_c.m` |
-| Full on-board feature/classifier benchmark | Planned thesis implementation/validation step |
+1. a usability gate marks clean versus corrupted epochs;
+2. a candidate selector chooses between the baseline ECG candidate and the
+   motion-suppressed candidate when the epoch is usable.
+
+The model headers committed under `source/` are the firmware-ready exported
+versions used by the embedded classifier build.
 
 ## Repository Layout
 
 ```text
 source/
-  main_phase1.c              Firmware acquisition loop
-  app_config_phase1.h        Hardware and stream constants
-  drivers/                   ECG ADC and MPU-6500 drivers
-  dsp/                       Small DSP helpers
-  timebase/                  Timestamp support
+  main_phase1.c                  Acquisition and Phase 4 stream entry point
+  app_config_phase1.h            Board, UART, and stream configuration
+  phase4_realtime.h              Real-time ECG/MAS feature and decision path
+  phase4_m4_classifier.c         Cortex-M4 classifier worker
+  mas_usability_classifier.h     Exported usability classifier
+  mas_selection_classifier.h     Exported candidate-selection classifier
+  drivers/                       ADS1293, ECG ADC, IMU, and board drivers
+  timebase/                      Shared timestamp support
 
 board/, CMSIS/, component/, device/, drivers/, startup/, utilities/, xip/
-  MCUXpresso/NXP SDK project support. Keep these paths stable for the IDE.
+  NXP SDK and MCUXpresso support files required by the project.
 
-Python Files/
-  ecg_monitor.py             Serial capture, plotting, and recording tool
-
-MATLAB Files/
-  phase2_*.m                 Filter evaluation and diagnostics
-  phase3_analyzer.m          Current GUI - B1-B7, N1/N3/N5/N6/N8/N9, M1-M6
-  phase3_analyzer_history.m  Historical reference - full M1-M31 set, kept
-                              for thesis writing and offline evaluation
-  phase3_diagnose*.m         Coherence and feasibility diagnostics
-  apply_*.m, ecg_metrics.m   Reusable analysis helpers
-
-thesis_pipeline/
-  README.md                  Clean pipeline entry points
-  config/recording_manifest.csv
-  matlab/run_realtime_ecg_feature_gui.m
-  matlab/evaluate_realtime_thresholds.m
-  matlab/extract_epoch_features.m
-  matlab/train_epoch_classifier.m
-  matlab/export_tree_to_c.m
-
-docs/
-  THESIS_WORKFLOW.md         Current end-to-end thesis workflow
+Debug_CM4/
+  Cortex-M4 worker makefile and linker script. Generated build outputs are
+  ignored.
 
 scripts/
-  export_source_code.py      Optional source export utility
+  build_cm4_classifier.ps1       Helper for the CM4 classifier build
+  flash_phase4_dual.ps1          Helper for flashing the dual-core Phase 4 build
+
+Support_Tools/
+  Final_Pipeline_Files/          Minimal final MATLAB/Python pipeline snapshot
+  Evaluation_Files_By_Phase/     Evaluation and diagnostic tools by project phase
+  Recordings/R01_R10_ADS1293_IMU_TS/
+                                  Curated ADS1293/IMU recording subset
 ```
 
-## Firmware
+## Firmware Quick Start
 
-Open the project in MCUXpresso IDE from this repository root.
+Open the repository root as an MCUXpresso project for the MIMXRT1166 target.
+The main CM7 firmware lives under `source/`; the CM4 classifier worker build is
+kept under `Debug_CM4/`.
 
-Important configuration points:
+If the MCUXpresso command-line tools are available on the machine, the helper
+scripts can be run from the repository root:
 
-- target board: NXP MIMXRT1166;
-- ECG front-end: AD8233 `OUT` and `REFOUT` through LPADC;
-- IMUs: three MPU-6500 devices on shared LPSPI1 with separate chip-selects;
-- UART: `500000` baud, matching `board/board.h` and
-  `Python Files/ecg_monitor.py`;
-- ECG corrected stream: `ecg_corr = out_raw - refout_raw`;
-- real recording sample rate must be computed from `t_us`, not assumed from
-  nominal firmware constants.
-
-The firmware currently supports acquisition evidence. The final thesis port
-should add benchmarked on-board feature extraction/classifier modes without
-changing the raw acquisition evidence trail.
-
-## Capture
-
-Install the Python monitor dependencies:
-
-```bash
-pip install numpy pyqtgraph pyserial PyQt5
+```powershell
+scripts/build_cm4_classifier.ps1
+scripts/flash_phase4_dual.ps1
 ```
 
-Run the recorder:
+Hardware/configuration assumptions:
 
-```bash
-python "Python Files/ecg_monitor.py"
-```
+- target MCU: NXP MIMXRT1166;
+- ECG front-end: ADS1293, two ECG channels;
+- motion reference: three MPU-6500 IMUs;
+- host UART rate: 500000 baud.
 
-Raw recordings are intentionally not broadly versioned. Keep large recordings
-under `Python Files/Recordings/` or `Recordings/`, and add manifest rows for
-recordings that should be used by the thesis pipeline.
+## Support Tools
 
-## MATLAB Thesis Pipeline
+`Support_Tools/` contains the curated MATLAB and Python files that support the
+published firmware snapshot. Start with
+`Support_Tools/README.md` for the full layout.
 
-From the repository root in MATLAB:
+Typical MATLAB setup from the repository root:
 
 ```matlab
-addpath('MATLAB Files');
-addpath('thesis_pipeline/matlab');
+addpath('Support_Tools/Final_Pipeline_Files/MATLAB');
+addpath('Support_Tools/Evaluation_Files_By_Phase/MATLAB');
 ```
 
-Useful entry points:
+The final pipeline can extract and label MAS epochs, train/export the two-stage
+classifier headers, and compare the candidate model set. The Python monitor in
+`Support_Tools/Final_Pipeline_Files/Python/ecg_phase4_monitor_gui.py` reads the
+deployed Phase 4 UART stream.
 
-```matlab
-run_realtime_ecg_feature_gui          % replay one recording with live features
-evaluate_realtime_thresholds          % audit motion/QRS thresholds across manifest
-[X,y,names,info] = extract_epoch_features;
-model = train_epoch_classifier;
-export_tree_to_c(model);
-```
+## Data Scope
 
-Generated outputs are written under `thesis_pipeline/outputs/` and are ignored
-by Git.
+Only the curated R01-R10 recording subset is included. Large local recordings,
+working feature matrices, generated figures, report-building files, and
+exploratory scripts are excluded through `.gitignore`.
 
-## Claim Boundaries
+## Validation Boundary
 
-Safe claims for the current repository:
-
-- timestamped ECG and IMU acquisition is implemented;
-- sample rate is recording-specific and measured from timestamps;
-- causal ECG filtering and real-time feature replay can be demonstrated from
-  recordings;
-- IMU waveform subtraction was explored and can be reported as
-  coherence-limited for this setup;
-- IMU and ECG-quality features can support motion-corrupted epoch gating.
-
-Claims that still require implementation or validation:
-
-- the full feature/classifier pipeline runs on the NXP board within a measured
-  latency budget;
-- classifier performance generalises beyond the current recordings;
-- any clinical diagnostic interpretation of morphology, rhythm, ST segment, or
-  arrhythmia state.
-
-See `docs/THESIS_WORKFLOW.md` for the current end-to-end plan.
+This is a single-subject proof-of-concept and embedded feasibility repository.
+It is not a medical device, not a clinical diagnostic tool, and does not claim
+population-level generalisation.

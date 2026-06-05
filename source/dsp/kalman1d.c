@@ -22,10 +22,10 @@ float Kalman1D_Update(kalman1d_t *k, float z)
 {
     if (k == NULL) { return z; }
 
-    /* Predict — covariance grows by process noise each step */
+    /* Predict covariance one sample ahead. */
     k->p = k->p + k->q;
 
-    /* Update — compute Kalman gain and correct the estimate */
+    /* Update estimate from the new measurement. */
     float s = k->p + k->r;
     float K = (s > 0.0f) ? (k->p / s) : 0.0f;
 

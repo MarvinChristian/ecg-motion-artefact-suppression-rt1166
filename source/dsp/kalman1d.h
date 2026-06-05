@@ -19,9 +19,9 @@
  *                     x = x + K * (z - x)
  *                     P = (1 - K) * P
  *
- *      Q — process noise variance: how much the true value can change per
+ *      Q - process noise variance: how much the true value can change per
  *          sample. Smaller = smoother but slower to track motion.
- *      R — measurement noise variance: how noisy the raw sensor reading is.
+ *      R - measurement noise variance: how noisy the raw sensor reading is.
  *          Larger = more smoothing, less responsive to real motion.
  */
 

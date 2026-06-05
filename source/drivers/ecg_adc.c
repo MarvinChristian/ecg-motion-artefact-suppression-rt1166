@@ -1,14 +1,9 @@
 /*
  * ecg_adc.c
  *
- * AUTHOR:      Marvin Christian
- * TITLE:       LPADC driver - AD8233 OUT and REFOUT taps
- * DATE:        19/04/2026
- *
- * Conversion sequence (single software trigger):
- *   TRIG0 -> CMD1 (OUT) -> CMD2 (REFOUT)
- *
- * Results land in the FIFO in order: [out, refout].
+ * LPADC driver for the AD8233 OUT/REFOUT taps. One software trigger fires
+ * a chained conversion (TRIG0 -> CMD1 OUT -> CMD2 REFOUT); FIFO order
+ * is [out, refout].
  */
 
 #include "drivers/ecg_adc.h"
@@ -18,10 +13,8 @@
 #include "fsl_common.h"
 #include "fsl_device_registers.h"   /* DWT, CoreDebug - cycle-count timeout */
 
-/* ------------------------------------------------------------------
-   Resolve LPADC peripheral base at compile time.
-   The iMX RT1160-EVK SDK exposes ADC1 / ADC2 (or LPADC1/LPADC2).
-   ------------------------------------------------------------------ */
+/* Resolve the LPADC peripheral base. The RT1160-EVK SDK may expose ADC1/ADC2
+ * or LPADC1/LPADC2 depending on the device header version. */
 #if   defined(ADC1)
     #define ECG_LPADC_BASE   ADC1
 #elif defined(ADC2)
@@ -36,22 +29,13 @@
     #error "No LPADC base symbol found - check your SDK device header."
 #endif
 
-/* ------------------------------------------------------------------
-   Command / trigger IDs
-   LPADC command IDs are 1-based (0 means "no command").
-   ------------------------------------------------------------------ */
+/* LPADC command and trigger IDs. Command IDs are 1-based; 0 means no command. */
 #define ECG_CMD_OUT        (1U)   /* CMD1 - samples OUT           */
 #define ECG_CMD_REFOUT     (2U)   /* CMD2 - samples REFOUT        */
 #define ECG_TRIG_ID        (0U)   /* software trigger 0           */
 #define ECG_RESULT_COUNT   (2U)
 
-/* ------------------------------------------------------------------
-   Spin-wait timeout - 500 us expressed in CPU cycles.
-
-   Two chained 12-bit LPADC conversions should complete far inside this
-   window; the timeout bounds a wiring/configuration fault so the acquisition
-   loop does not hang forever.
-   ------------------------------------------------------------------ */
+/* 500 us spin-wait bound; protects against a wiring/config fault. */
 #define ECG_CONV_TIMEOUT_US   (500U)
 
 static void ECGADC_SetCommand(uint32_t cmd_id, uint32_t channel, uint32_t next_cmd)

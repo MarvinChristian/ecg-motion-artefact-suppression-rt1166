@@ -1,15 +1,8 @@
 /*
  * mpu6500_spi.c
  *
- * AUTHOR:      Marvin Christian
- * TITLE:       MPU6500 SPI driver implementation
- * DATE:        28/03/2026
- *
- * SUMMARY:
- *      Blocking SPI transfers using LPSPI_MasterTransferBlocking.
- *      kLPSPI_MasterPcsContinuous holds CS low for the full multi-byte
- *      transfer (address byte + data bytes in one transaction).
- *      Retry loop handles kStatus_LPSPI_Busy when the bus is briefly busy.
+ * Blocking SPI driver for MPU-6500. CS held low for the full address+data
+ * transaction via kLPSPI_MasterPcsContinuous. Retries on kStatus_LPSPI_Busy.
  */
 
 #include "drivers/mpu6500_spi.h"
@@ -18,7 +11,7 @@
 #define XFER_RETRY_COUNT    (50U)
 #define XFER_RETRY_DELAY_US (20U)
 
-/* ── Internal transfer ───────────────────────────────────────────────────── */
+/* Transfer helpers. */
 
 static status_t spi_xfer_once(mpu6500_t *dev,
                                const uint8_t *tx, uint8_t *rx, size_t n)
@@ -70,7 +63,7 @@ static status_t spi_xfer(mpu6500_t *dev,
     return st;
 }
 
-/* ── Public API ─────────────────────────────────────────────────────────── */
+/* Public API. */
 
 status_t MPU6500_SPI_InitMode(mpu6500_t          *dev,
                                LPSPI_Type         *base,

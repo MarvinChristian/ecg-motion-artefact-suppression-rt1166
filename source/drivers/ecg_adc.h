@@ -41,7 +41,7 @@ void ECGADC_Init(void);
 bool ECGADC_ReadDebug(ecg_adc_debug_sample_t *sample);
 
 /*
- * Compatibility wrapper for older code.
+ * AD8233 acquisition wrapper used by the Phase 1 stream.
  *
  * ecg12 - raw 12-bit ADC value for OUT
  * ref12 - raw 12-bit ADC value for REFOUT
