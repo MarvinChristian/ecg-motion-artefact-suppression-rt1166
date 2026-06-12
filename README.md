@@ -98,6 +98,9 @@ classifier headers, and compare the candidate model set. The Python monitor in
 `Support_Tools/Final_Pipeline_Files/Python/ecg_phase4_monitor_gui.py` reads the
 deployed Phase 4 UART stream.
 
+NOTE: If the ECG trace of CH1 or CH2 in the Python monitor looks clipped or 
+unclear, simply reset the board. 
+
 ## Data Scope
 
 Only the curated R01-R10 recording subset is included. Large local recordings,
