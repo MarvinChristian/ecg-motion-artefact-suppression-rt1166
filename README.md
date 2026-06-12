@@ -101,12 +101,6 @@ deployed Phase 4 UART stream.
 NOTE: If the ECG trace of CH1 or CH2 in the Python monitor looks clipped or 
 unclear, simply reset the board. 
 
-## Data Scope
-
-Only the curated R01-R10 recording subset is included. Large local recordings,
-working feature matrices, generated figures, report-building files, and
-exploratory scripts are excluded through `.gitignore`.
-
 ## Validation Boundary
 
 This is a single-subject proof-of-concept and embedded feasibility repository.
